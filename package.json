@@ -1,0 +1,13 @@
+{
+  "name": "GlowingSquidMinecraftLauncher",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0"
+  }
+}
