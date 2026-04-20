@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "GlowingSquidMinecraftLauncher",
   "version": "0.2.0",
-  "identifier": "top.csec.launcher.minecraft.squid.glow",
+  "identifier": "top.syntropica.launcher.minecraft.squid.glow",
   "build": {
     "frontendDist": "../src"
   },
