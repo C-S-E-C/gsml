@@ -165,6 +165,10 @@ fn extract_argument_values(argument: &Value) -> Vec<String> {
     vec![]
 }
 
+fn is_unsupported_jvm_argument(argument: &str) -> bool {
+    argument.starts_with("--sun-misc-unsafe-memory-access=")
+}
+
 fn current_arch() -> &'static str {
     if cfg!(target_pointer_width = "64") {
         "64"
@@ -258,19 +262,10 @@ fn extract_natives(
             }
 
             let dest = natives_dir.join(&file_name);
-            let mut out = fs::File::create(&dest).map_err(|e| {
-                format!(
-                    "Unable to create native file '{}': {}",
-                    dest.display(),
-                    e
-                )
-            })?;
+            let mut out = fs::File::create(&dest)
+                .map_err(|e| format!("Unable to create native file '{}': {}", dest.display(), e))?;
             io::copy(&mut entry, &mut out).map_err(|e| {
-                format!(
-                    "Unable to extract native file '{}': {}",
-                    dest.display(),
-                    e
-                )
+                format!("Unable to extract native file '{}': {}", dest.display(), e)
             })?;
         }
     }
@@ -423,6 +418,9 @@ fn start_minecraft(
                 );
                 if replaced == "-cp" || replaced == "--classpath" {
                     has_classpath_arg = true;
+                }
+                if is_unsupported_jvm_argument(&replaced) {
+                    continue;
                 }
                 command_args.push(replaced);
             }
