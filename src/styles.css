@@ -92,6 +92,10 @@ ul {
   cursor: pointer;
 }
 
+.version.selected {
+  outline: 2px solid var(--text-color);
+}
+
 .version:hover {
   transform: scale(1.1);
   transition: transform 0.2s;
@@ -149,6 +153,42 @@ ul {
   display: flex;
   line-height: 5px;
   gap: 10px;
+}
+
+.panel {
+  width: min(620px, calc(100% - 48px));
+  margin: 20px auto;
+  padding: 20px;
+  border-radius: 12px;
+  background-color: var(--bgcolor);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0;
+  gap: 6px;
+}
+
+.field-row input,
+.field-row select {
+  border: 1px solid #ffffff35;
+  border-radius: 8px;
+  background: #00000020;
+  color: var(--text-color);
+  padding: 8px 10px;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.muted {
+  opacity: 0.75;
 }
 
 @media (prefers-color-scheme: dark) {

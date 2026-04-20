@@ -6,6 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   </head>
   <body>
+    <section class="panel">
+      <h1>Start Minecraft</h1>
+      <p class="muted">Minecraft path: <span id="home-mc-path">Loading...</span></p>
+      <div class="field-row">
+        <label for="home-player-name">Player name</label>
+        <input id="home-player-name" type="text" maxlength="16" placeholder="Player" />
+      </div>
+      <div class="field-row">
+        <label for="home-version-select">Version</label>
+        <select id="home-version-select"></select>
+      </div>
+      <div class="button-row">
+        <button id="home-refresh-btn">Refresh versions</button>
+        <button id="home-start-btn">Start</button>
+      </div>
+      <p id="home-status" class="muted"></p>
+    </section>
     <script src="/main.js"></script>
   </body>
 </html>
