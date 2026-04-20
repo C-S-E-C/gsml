@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use serde_json::Value;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -164,6 +165,119 @@ fn extract_argument_values(argument: &Value) -> Vec<String> {
     vec![]
 }
 
+fn current_arch() -> &'static str {
+    if cfg!(target_pointer_width = "64") {
+        "64"
+    } else {
+        "32"
+    }
+}
+
+fn extract_natives(
+    version_json: &Value,
+    libraries_dir: &Path,
+    natives_dir: &Path,
+) -> Result<(), String> {
+    let os = current_os_name();
+    let arch = current_arch();
+
+    let Some(libraries) = version_json.get("libraries").and_then(|v| v.as_array()) else {
+        return Ok(());
+    };
+
+    for library in libraries {
+        if !rules_allow(library) {
+            continue;
+        }
+
+        let Some(natives_map) = library.get("natives").and_then(|v| v.as_object()) else {
+            continue;
+        };
+
+        let Some(classifier_template) = natives_map.get(os).and_then(|v| v.as_str()) else {
+            continue;
+        };
+
+        let classifier = classifier_template.replace("${arch}", arch);
+
+        let Some(jar_path) = library
+            .get("downloads")
+            .and_then(|d| d.get("classifiers"))
+            .and_then(|c| c.get(&classifier))
+            .and_then(|e| e.get("path"))
+            .and_then(|p| p.as_str())
+        else {
+            continue;
+        };
+
+        let jar_file = libraries_dir.join(jar_path);
+        if !jar_file.exists() {
+            continue;
+        }
+
+        let exclude_prefixes: Vec<String> = library
+            .get("extract")
+            .and_then(|e| e.get("exclude"))
+            .and_then(|e| e.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let file = fs::File::open(&jar_file)
+            .map_err(|e| format!("Unable to open native jar '{}': {}", jar_file.display(), e))?;
+        let mut archive = zip::ZipArchive::new(file)
+            .map_err(|e| format!("Unable to read native jar '{}': {}", jar_file.display(), e))?;
+
+        for i in 0..archive.len() {
+            let mut entry = archive
+                .by_index(i)
+                .map_err(|e| format!("Unable to read zip entry: {}", e))?;
+            let entry_name = entry.name().to_string();
+
+            if exclude_prefixes
+                .iter()
+                .any(|prefix| entry_name.starts_with(prefix.as_str()))
+            {
+                continue;
+            }
+
+            if entry.is_dir() {
+                continue;
+            }
+
+            let file_name = match Path::new(&entry_name).file_name() {
+                Some(n) => n.to_string_lossy().to_string(),
+                None => continue,
+            };
+
+            if file_name.is_empty() || file_name == ".." {
+                continue;
+            }
+
+            let dest = natives_dir.join(&file_name);
+            let mut out = fs::File::create(&dest).map_err(|e| {
+                format!(
+                    "Unable to create native file '{}': {}",
+                    dest.display(),
+                    e
+                )
+            })?;
+            io::copy(&mut entry, &mut out).map_err(|e| {
+                format!(
+                    "Unable to extract native file '{}': {}",
+                    dest.display(),
+                    e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 fn replace_launch_tokens(
     text: &str,
     player_name: &str,
@@ -283,6 +397,7 @@ fn start_minecraft(
 
     let classpath = classpath_entries.join(classpath_separator);
     let _ = fs::create_dir_all(&natives_dir);
+    extract_natives(&version_json, &libraries_dir, &natives_dir)?;
 
     let mut command_args = Vec::new();
     let mut has_classpath_arg = false;
