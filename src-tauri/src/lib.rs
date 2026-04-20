@@ -1,81 +1,62 @@
-// src-tauri/src/lib.rs
 #![allow(unused_imports)]
+use serde_json::Value;
 use std::fs;
-use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-// 定义单个环境变量获取函数
+
+const MAX_PLAYER_NAME_LENGTH: usize = 16;
+
 #[tauri::command]
 fn get_env_var(name: String) -> Result<String, String> {
-    println!("[Rust] Requesting env var: {}", name);
-    
-    match std::env::var(&name) {
-        Ok(value) => {
-            println!("[Rust] Found env var: {} = {}", name, value);
-            Ok(value)
-        }
-        Err(e) => {
-            let error_msg = format!("Env var '{}' not found: {}", name, e);
-            println!("[Rust] {}", error_msg);
-            Err(error_msg)
-        }
-    }
+    std::env::var(&name).map_err(|e| format!("Env var '{}' not found: {}", name, e))
 }
 
 #[tauri::command]
 fn list_directories(path: String) -> Result<Vec<String>, String> {
-    println!("列出目录: {}", path);
-    
     let mut dirs = Vec::new();
-    
-    match fs::read_dir(&path) {
-        Ok(entries) => {
-            for entry in entries {
-                match entry {
-                    Ok(entry) => {
-                        if let Ok(metadata) = entry.metadata() {
-                            if metadata.is_dir() {
-                                if let Some(dir_name) = entry.file_name().to_str() {
-                                    dirs.push(dir_name.to_string());
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        return Err(format!("无法读取条目: {}", e));
-                    }
-                }
+    let entries = fs::read_dir(&path).map_err(|e| format!("无法读取目录 '{}': {}", path, e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("无法读取条目: {}", e))?;
+        if entry
+            .metadata()
+            .map_err(|e| format!("无法读取元数据: {}", e))?
+            .is_dir()
+        {
+            if let Some(dir_name) = entry.file_name().to_str() {
+                dirs.push(dir_name.to_string());
             }
-            // 排序结果
-            dirs.sort();
-            Ok(dirs)
-        }
-        Err(e) => {
-            Err(format!("无法读取目录 '{}': {}", path, e))
         }
     }
+
+    dirs.sort();
+    Ok(dirs)
 }
 
 #[tauri::command]
 fn list_minecraft_versions(mc_path: String) -> Result<Vec<String>, String> {
     let versions_dir = Path::new(&mc_path).join("versions");
-    let entries = fs::read_dir(&versions_dir)
-        .map_err(|e| format!("Unable to read versions folder '{}': {}", versions_dir.display(), e))?;
+    let entries = fs::read_dir(&versions_dir).map_err(|e| {
+        format!(
+            "Unable to read versions folder '{}': {}",
+            versions_dir.display(),
+            e
+        )
+    })?;
 
     let mut versions = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| format!("Unable to read versions entry: {}", e))?;
-        let metadata = entry
+        if !entry
             .metadata()
-            .map_err(|e| format!("Unable to read versions metadata: {}", e))?;
-
-        if !metadata.is_dir() {
+            .map_err(|e| format!("Unable to read versions metadata: {}", e))?
+            .is_dir()
+        {
             continue;
         }
 
         let version = entry.file_name().to_string_lossy().to_string();
-        let version_json = entry.path().join(format!("{}.json", &version));
-        if version_json.exists() {
+        if entry.path().join(format!("{}.json", &version)).exists() {
             versions.push(version);
         }
     }
@@ -97,55 +78,293 @@ fn sanitize_version(version: &str) -> Result<&str, String> {
 
 fn resolve_java_binary() -> String {
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
-        let binary = if cfg!(target_os = "windows") {
-            Path::new(&java_home).join("bin").join("javaw.exe")
+        let candidates = if cfg!(target_os = "windows") {
+            vec![
+                Path::new(&java_home).join("bin").join("java.exe"),
+                Path::new(&java_home).join("bin").join("javaw.exe"),
+            ]
         } else {
-            Path::new(&java_home).join("bin").join("java")
+            vec![Path::new(&java_home).join("bin").join("java")]
         };
 
-        if binary.exists() {
-            return binary.to_string_lossy().to_string();
+        for binary in candidates {
+            if binary.exists() {
+                return binary.to_string_lossy().to_string();
+            }
         }
     }
 
+    "java".to_string()
+}
+
+fn current_os_name() -> &'static str {
     if cfg!(target_os = "windows") {
-        "javaw".to_string()
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "osx"
     } else {
-        "java".to_string()
+        "linux"
     }
 }
 
+fn rule_matches(rule: &Value) -> bool {
+    let os_name = rule
+        .get("os")
+        .and_then(|os| os.get("name"))
+        .and_then(|name| name.as_str());
+
+    match os_name {
+        Some(name) => name == current_os_name(),
+        None => true,
+    }
+}
+
+fn rules_allow(argument: &Value) -> bool {
+    let Some(rules) = argument.get("rules").and_then(|v| v.as_array()) else {
+        return true;
+    };
+
+    let mut allow = false;
+    for rule in rules {
+        if !rule_matches(rule) {
+            continue;
+        }
+
+        let action = rule
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("disallow");
+        allow = action == "allow";
+    }
+
+    allow
+}
+
+fn extract_argument_values(argument: &Value) -> Vec<String> {
+    if !rules_allow(argument) {
+        return vec![];
+    }
+
+    if let Some(text) = argument.as_str() {
+        return vec![text.to_string()];
+    }
+
+    if let Some(values) = argument.as_array() {
+        let mut out = Vec::new();
+        for value in values {
+            out.extend(extract_argument_values(value));
+        }
+        return out;
+    }
+
+    if let Some(value) = argument.get("value") {
+        return extract_argument_values(value);
+    }
+
+    vec![]
+}
+
+fn replace_launch_tokens(
+    text: &str,
+    player_name: &str,
+    version: &str,
+    game_dir: &Path,
+    assets_dir: &Path,
+    assets_index_name: &str,
+    version_type: &str,
+    classpath: &str,
+    classpath_separator: &str,
+    natives_dir: &Path,
+) -> String {
+    text.replace("${auth_player_name}", player_name)
+        .replace("${version_name}", version)
+        .replace("${game_directory}", &game_dir.to_string_lossy())
+        .replace("${assets_root}", &assets_dir.to_string_lossy())
+        .replace("${assets_index_name}", assets_index_name)
+        .replace("${auth_uuid}", "00000000-0000-0000-0000-000000000000")
+        .replace("${auth_access_token}", "0")
+        .replace("${user_type}", "legacy")
+        .replace("${version_type}", version_type)
+        .replace("${launcher_name}", "gsml")
+        .replace("${launcher_version}", "1.0.0")
+        .replace("${classpath}", classpath)
+        .replace("${classpath_separator}", classpath_separator)
+        .replace("${natives_directory}", &natives_dir.to_string_lossy())
+}
+
 #[tauri::command]
-fn start_minecraft(mc_path: String, version: String, player_name: Option<String>) -> Result<String, String> {
+fn start_minecraft(
+    mc_path: String,
+    version: String,
+    player_name: Option<String>,
+) -> Result<String, String> {
     let version = sanitize_version(version.trim())?;
     let game_dir = Path::new(&mc_path);
-    let jar_path = game_dir
-        .join("versions")
-        .join(version)
-        .join(format!("{}.jar", version));
+    let version_dir = game_dir.join("versions").join(version);
+    let version_json_path = version_dir.join(format!("{}.json", version));
+    let client_jar = version_dir.join(format!("{}.jar", version));
+    let assets_dir = game_dir.join("assets");
+    let libraries_dir = game_dir.join("libraries");
+    let natives_dir = version_dir.join("natives");
+    let classpath_separator = if cfg!(target_os = "windows") {
+        ";"
+    } else {
+        ":"
+    };
 
-    if !jar_path.exists() {
-        return Err(format!("Minecraft jar not found: {}", jar_path.display()));
+    if !version_json_path.exists() {
+        return Err(format!(
+            "Minecraft version metadata not found: {}",
+            version_json_path.display()
+        ));
+    }
+
+    if !client_jar.exists() {
+        return Err(format!("Minecraft jar not found: {}", client_jar.display()));
     }
 
     let player = player_name
         .unwrap_or_else(|| "Player".to_string())
         .trim()
         .chars()
-        .take(16)
+        .take(MAX_PLAYER_NAME_LENGTH)
         .collect::<String>();
-
     let player = if player.is_empty() {
         "Player".to_string()
     } else {
         player
     };
 
+    let version_json_raw = fs::read_to_string(&version_json_path).map_err(|e| {
+        format!(
+            "Unable to read version json '{}': {}",
+            version_json_path.display(),
+            e
+        )
+    })?;
+    let version_json: Value = serde_json::from_str(&version_json_raw).map_err(|e| {
+        format!(
+            "Unable to parse version json '{}': {}",
+            version_json_path.display(),
+            e
+        )
+    })?;
+
+    let main_class = version_json
+        .get("mainClass")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "mainClass missing in version metadata".to_string())?;
+
+    let assets_index_name = version_json
+        .get("assets")
+        .and_then(|v| v.as_str())
+        .unwrap_or(version);
+    let version_type = version_json
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("release");
+
+    let mut classpath_entries = vec![client_jar.to_string_lossy().to_string()];
+    if let Some(libraries) = version_json.get("libraries").and_then(|v| v.as_array()) {
+        for library in libraries {
+            if !rules_allow(library) {
+                continue;
+            }
+            if let Some(path) = library
+                .get("downloads")
+                .and_then(|d| d.get("artifact"))
+                .and_then(|a| a.get("path"))
+                .and_then(|p| p.as_str())
+            {
+                classpath_entries.push(libraries_dir.join(path).to_string_lossy().to_string());
+            }
+        }
+    }
+
+    let classpath = classpath_entries.join(classpath_separator);
+    let _ = fs::create_dir_all(&natives_dir);
+
+    let mut command_args = Vec::new();
+    let mut has_classpath_arg = false;
+
+    if let Some(jvm_args) = version_json
+        .get("arguments")
+        .and_then(|v| v.get("jvm"))
+        .and_then(|v| v.as_array())
+    {
+        for arg in jvm_args {
+            for value in extract_argument_values(arg) {
+                let replaced = replace_launch_tokens(
+                    &value,
+                    &player,
+                    version,
+                    game_dir,
+                    &assets_dir,
+                    assets_index_name,
+                    version_type,
+                    &classpath,
+                    classpath_separator,
+                    &natives_dir,
+                );
+                if replaced == "-cp" || replaced == "--classpath" {
+                    has_classpath_arg = true;
+                }
+                command_args.push(replaced);
+            }
+        }
+    }
+
+    if !has_classpath_arg {
+        command_args.push("-Djava.library.path=".to_string() + &natives_dir.to_string_lossy());
+        command_args.push("-cp".to_string());
+        command_args.push(classpath.clone());
+    }
+
+    command_args.push(main_class.to_string());
+
+    if let Some(game_args) = version_json
+        .get("arguments")
+        .and_then(|v| v.get("game"))
+        .and_then(|v| v.as_array())
+    {
+        for arg in game_args {
+            for value in extract_argument_values(arg) {
+                command_args.push(replace_launch_tokens(
+                    &value,
+                    &player,
+                    version,
+                    game_dir,
+                    &assets_dir,
+                    assets_index_name,
+                    version_type,
+                    &classpath,
+                    classpath_separator,
+                    &natives_dir,
+                ));
+            }
+        }
+    } else if let Some(legacy_args) = version_json
+        .get("minecraftArguments")
+        .and_then(|v| v.as_str())
+    {
+        for arg in legacy_args.split_whitespace() {
+            command_args.push(replace_launch_tokens(
+                arg,
+                &player,
+                version,
+                game_dir,
+                &assets_dir,
+                assets_index_name,
+                version_type,
+                &classpath,
+                classpath_separator,
+                &natives_dir,
+            ));
+        }
+    }
+
     let child = Command::new(resolve_java_binary())
-        .arg("-jar")
-        .arg(&jar_path)
-        .arg("--username")
-        .arg(player)
+        .args(command_args)
         .current_dir(game_dir)
         .spawn()
         .map_err(|e| format!("Unable to start Minecraft process: {}", e))?;

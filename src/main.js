@@ -4,6 +4,7 @@ const app = {
 };
 
 const invoke = window.__TAURI_INTERNALS__.invoke;
+const MAX_PLAYER_NAME_LENGTH = 16;
 const thesquidsays = [
     "Ayo, stop touching me!",
     "I'm not a toy!",
@@ -46,10 +47,10 @@ function sidebar_button(name, btn) {
 
 function requiredjava(date) {
     date = new Date(date);
-    if (date < new Date('2021-05-12')) {
+    if (date < new Date('2021-06-08')) {
         return 8;
     }
-    if (date < new Date('2021-09-01')) {
+    if (date < new Date('2021-11-30')) {
         return 16;
     }
     return 17;
@@ -120,7 +121,7 @@ function getVersionIcon(version) {
         imgsrc += "neoforge.png";
     } else if (lowerVersion.includes("forge")) {
         imgsrc += "anvil.png";
-    } else if (version.includes("1.")) {
+    } else if (/^1\.\d+/.test(version)) {
         imgsrc += "grass_block.png";
     } else if (lowerVersion.includes("w") || lowerVersion.includes("snapshot")) {
         imgsrc += "dirt.png";
@@ -193,7 +194,7 @@ async function initHomePage() {
     renderVersionOptions();
 
     nameInput.addEventListener('input', () => {
-        const name = nameInput.value.trim().slice(0, 16);
+        const name = nameInput.value.trim().slice(0, MAX_PLAYER_NAME_LENGTH);
         localStorage.setItem('PLAYER_NAME', name || 'Player');
     });
 
@@ -212,7 +213,7 @@ async function initHomePage() {
     startButton.addEventListener('click', async () => {
         const mcPath = localStorage.getItem('MC_PATH') || '';
         const version = versionSelect.value;
-        const playerName = (nameInput.value || 'Player').trim().slice(0, 16) || 'Player';
+        const playerName = (nameInput.value || 'Player').trim().slice(0, MAX_PLAYER_NAME_LENGTH) || 'Player';
 
         if (!version) {
             status.textContent = 'Please pick a version first.';
