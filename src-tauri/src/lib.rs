@@ -420,6 +420,7 @@ fn start_minecraft(
                     has_classpath_arg = true;
                 }
                 if is_unsupported_jvm_argument(&replaced) {
+                    log::debug!("Skipping unsupported JVM argument: {}", replaced);
                     continue;
                 }
                 command_args.push(replaced);
