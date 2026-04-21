@@ -345,8 +345,8 @@ fn replace_launch_tokens(
         .replace("${classpath}", classpath)
         .replace("${classpath_separator}", classpath_separator)
         .replace("${natives_directory}", &natives_dir.to_string_lossy());
-    
-    format!("{} -Dminecraft.launcher.brand=GlowSquid --versionType GlowSquid", processed)
+
+    processed
 }
 
 #[tauri::command]
