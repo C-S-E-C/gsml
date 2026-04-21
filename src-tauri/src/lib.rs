@@ -77,7 +77,26 @@ fn sanitize_version(version: &str) -> Result<&str, String> {
     Ok(version)
 }
 
-fn resolve_java_binary() -> String {
+fn resolve_java_binary(game_dir: &Path, version_json: &Value) -> String {
+    if let Some(component) = version_json
+        .get("javaVersion")
+        .and_then(|v| v.get("component"))
+        .and_then(|v| v.as_str())
+    {
+        let runtime_dir = game_dir.join("runtime").join(component).join("bin");
+        let runtime_candidates = if cfg!(target_os = "windows") {
+            vec![runtime_dir.join("javaw.exe"), runtime_dir.join("java.exe")]
+        } else {
+            vec![runtime_dir.join("java")]
+        };
+
+        for binary in runtime_candidates {
+            if binary.exists() {
+                return binary.to_string_lossy().to_string();
+            }
+        }
+    }
+
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
         let candidates = if cfg!(target_os = "windows") {
             vec![
@@ -504,7 +523,7 @@ fn start_minecraft(
         }
     }
 
-    let child = Command::new(resolve_java_binary())
+    let child = Command::new(resolve_java_binary(game_dir, &version_json))
         .args(command_args)
         .current_dir(game_dir)
         .spawn()
