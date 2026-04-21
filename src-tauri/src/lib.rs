@@ -323,7 +323,8 @@ fn replace_launch_tokens(
     classpath_separator: &str,
     natives_dir: &Path,
 ) -> String {
-    text.replace("${auth_player_name}", player_name)
+    let processed = text
+        .replace("${auth_player_name}", player_name)
         .replace("${version_name}", version)
         .replace("${game_directory}", &game_dir.to_string_lossy())
         .replace("${assets_root}", &assets_dir.to_string_lossy())
@@ -332,19 +333,20 @@ fn replace_launch_tokens(
         .replace("${auth_access_token}", "0")
         .replace("${user_type}", "legacy")
         .replace("${version_type}", version_type)
-        .replace("${launcher_name}", "gsml")
+        .replace("${launcher_name}", "GlowSquid Minecraft Launcher")
         .replace("${launcher_version}", "1.0.0")
         .replace("${user_properties}", "{}")
         .replace("${user_properties_map}", "{}")
         .replace("${auth_xuid}", "0")
-        .replace("${clientid}", "0")
         .replace("${quickPlayPath}", "")
         .replace("${quickPlaySingleplayer}", "")
         .replace("${quickPlayMultiplayer}", "")
         .replace("${quickPlayRealms}", "")
         .replace("${classpath}", classpath)
         .replace("${classpath_separator}", classpath_separator)
-        .replace("${natives_directory}", &natives_dir.to_string_lossy())
+        .replace("${natives_directory}", &natives_dir.to_string_lossy());
+    
+    format!("{} -Dminecraft.launcher.brand=GlowSquid --versionType GlowSquid", processed)
 }
 
 #[tauri::command]
