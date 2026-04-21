@@ -108,16 +108,8 @@ fn current_os_name() -> &'static str {
     }
 }
 
-fn feature_enabled(feature: &str) -> bool {
-    match feature {
-        "is_demo_user"
-        | "has_custom_resolution"
-        | "has_quick_plays_support"
-        | "is_quick_play_singleplayer"
-        | "is_quick_play_multiplayer"
-        | "is_quick_play_realms" => false,
-        _ => false,
-    }
+fn feature_enabled(_feature: &str) -> bool {
+    false
 }
 
 fn rule_matches(rule: &Value) -> bool {
