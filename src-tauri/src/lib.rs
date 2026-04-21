@@ -108,16 +108,43 @@ fn current_os_name() -> &'static str {
     }
 }
 
+fn feature_enabled(feature: &str) -> bool {
+    match feature {
+        "is_demo_user"
+        | "has_custom_resolution"
+        | "has_quick_plays_support"
+        | "is_quick_play_singleplayer"
+        | "is_quick_play_multiplayer"
+        | "is_quick_play_realms" => false,
+        _ => false,
+    }
+}
+
 fn rule_matches(rule: &Value) -> bool {
     let os_name = rule
         .get("os")
         .and_then(|os| os.get("name"))
         .and_then(|name| name.as_str());
 
-    match os_name {
+    let os_matches = match os_name {
         Some(name) => name == current_os_name(),
         None => true,
-    }
+    };
+
+    let features_match = rule
+        .get("features")
+        .and_then(|features| features.as_object())
+        .map(|features| {
+            features.iter().all(|(feature, expected)| {
+                expected
+                    .as_bool()
+                    .map(|expected_value| feature_enabled(feature) == expected_value)
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(true);
+
+    os_matches && features_match
 }
 
 fn rules_allow(argument: &Value) -> bool {
@@ -296,6 +323,14 @@ fn replace_launch_tokens(
         .replace("${version_type}", version_type)
         .replace("${launcher_name}", "gsml")
         .replace("${launcher_version}", "1.0.0")
+        .replace("${user_properties}", "{}")
+        .replace("${user_properties_map}", "{}")
+        .replace("${auth_xuid}", "0")
+        .replace("${clientid}", "0")
+        .replace("${quickPlayPath}", "")
+        .replace("${quickPlaySingleplayer}", "")
+        .replace("${quickPlayMultiplayer}", "")
+        .replace("${quickPlayRealms}", "")
         .replace("${classpath}", classpath)
         .replace("${classpath_separator}", classpath_separator)
         .replace("${natives_directory}", &natives_dir.to_string_lossy())
