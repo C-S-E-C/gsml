@@ -8,5 +8,36 @@
     <script type="module" src="./src/js/m3.js"></script>
   </head>
   <body>
+    <!-- ── Settings layout: left category list, right content ── -->
+    <div class="settings-sidebar">
+      <div class="settings-caption">Settings</div>
+      <md-list id="settings-nav" class="settings-nav">
+        <md-list-item class="about-item selected" data-view="about" onclick="switchSettingsView('about')">
+          <md-icon slot="start">info</md-icon>
+          <span slot="headline">About</span>
+        </md-list-item>
+      </md-list>
+    </div>
+
+    <main class="settings-content">
+      <!-- ── About panel (default & centered, 仿照 README 居中排版) ── -->
+      <section id="view-about" class="view-panel" data-view="about">
+        <div class="about-card">
+          <img class="about-logo" src="./src/assets/logo.png" alt="Glow Squid Logo" />
+          <h1 class="about-title">Glow Squid Minecraft Launcher</h1>
+          <div class="about-subtitle">A Minecraft launcher built with modern UI</div>
+          <div class="about-version">Version 0.1.0 <span class="muted">(channel: ALPHA)</span></div>
+
+          <div class="about-divider"></div>
+
+          <div class="about-section-label">Third-Party Components</div>
+          <p class="about-note">
+            <a class="lib-link" href="./THIRD_PARTY_LICENSES.html">View all third-party licenses</a>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/js/settings.js"></script>
   </body>
 </html>

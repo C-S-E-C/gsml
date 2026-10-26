@@ -52,14 +52,14 @@
         </div>
 
         <div id="add-account-microsoft" class="add-account-panel" hidden>
-          <md-filled-button icon="open_in_new" href="https://login.live.com" target="_blank">
+          <md-filled-button icon="open_in_new" onclick="openUrl('https://login.live.com')" target="_blank">
             <md-icon slot="icon">open_in_new</md-icon>
             Sign in with Microsoft</md-filled-button>
         </div>
       </div>
       <div slot="actions">
-        <md-filled-tonal-button slot="cancel" value="cancel" onclick="this.parent.close()">Cancel</md-filled-tonal-button>
-        <md-filled-button slot="confirm" icon="person_add">Add</md-filled-button>
+        <md-filled-tonal-button slot="cancel" value="cancel" onclick="document.getElementById('add-account-dialog').close()">Cancel</md-filled-tonal-button>
+        <md-filled-button slot="confirm" onclick="document.getElementById('add-account-dialog').close('add')" icon="person_add">Add</md-filled-button>
       </div>
     </md-dialog>
 

@@ -11,6 +11,7 @@ import {
     ensureLauncherState,
     refreshInstalledVersions,
 } from './main.js';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 // Example skin preview source (mineskin.eu). Format:
 //   body  → https://mineskin.eu/armor/body/{suite}/{size}.png
@@ -352,3 +353,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 window.initHomePage = initHomePage;
 window.chooseAccount = chooseAccount;
 window.addAccount = addAccount;
+window.openUrl = openUrl;

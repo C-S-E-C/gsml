@@ -17,6 +17,9 @@ importers:
       '@tauri-apps/plugin-fs':
         specifier: ^2.7.1
         version: 2.7.1
+      '@tauri-apps/plugin-opener':
+        specifier: ^2.7.2
+        version: 2.7.2
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2
@@ -222,6 +225,9 @@ packages:
 
   '@tauri-apps/plugin-fs@2.7.1':
     resolution: {integrity: sha512-4TBVjpi/q8PuNzjpkAc2iBGXMTLjOrAyfTiiOL8ORaJCZJRG3tjzmQ4sqs2CMG75FvLyRkOkERfP7AyY4iBNwQ==}
+
+  '@tauri-apps/plugin-opener@2.7.2':
+    resolution: {integrity: sha512-LyybP1VSzTMQiaFYcsbAse47KpivlyXdLZMQzGLEnkgQacGESnpjAfFoQ6h5sqWgAdZDH9szYjPzHMpv0Sz+TQ==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -519,6 +525,10 @@ snapshots:
       '@tauri-apps/cli-win32-x64-msvc': 2.12.3
 
   '@tauri-apps/plugin-fs@2.7.1':
+    dependencies:
+      '@tauri-apps/api': 2.12.4
+
+  '@tauri-apps/plugin-opener@2.7.2':
     dependencies:
       '@tauri-apps/api': 2.12.4
 

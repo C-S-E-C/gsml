@@ -187,6 +187,7 @@ body {
   border: none;
   padding: 0;
   margin: 0;
+  scrollbar-color: var(--md-sys-color-surface-container) var(--md-sys-color-background);
 }
 
 #main #loading {
