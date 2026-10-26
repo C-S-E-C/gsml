@@ -1,7 +1,7 @@
 <p align="center">
   <img src="src/assets/logo.png" alt="Glow Squid Logo" />
   <h1 align="center">Glow Squid Minecraft Launcher</h1>
-  <strong>A Minecraft launcher built with modern UI and Material 3 design.</strong>
+  <strong align="center">A Minecraft launcher built with modern UI and Material 3 design.</strong>
 </p>
 
 ---
