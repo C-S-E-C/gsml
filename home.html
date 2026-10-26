@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="./src/css/styles.css" />
+    <link rel="stylesheet" href="./src/css/home.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script type="module" src="./src/js/m3.js"></script>
+  </head>
+  <body>
+
+    <!-- ── Accounts (账号选择) ─────────────────────────────── -->
+    <div class="sidebar">
+      <md-list class="accounts-list" id="accounts-list">
+        <!-- 示例账户数据 -->
+        <md-list-item class="account-item" data-account="alex" onclick="chooseAccount('alex')">
+          <img slot="start" src="https://mineskin.eu/helm/alex/64.png" alt="alex" />
+          <span slot="headline">alex</span>
+          <span slot="supporting-text">Offline</span>
+          <md-icon slot="end">link_off</md-icon>
+        </md-list-item>
+        <md-list-item class="account-item" data-account="owner" onclick="chooseAccount('owner')">
+          <img slot="start" src="https://mineskin.eu/helm/owner/64.png" alt="owner" />
+          <span slot="headline">owner</span>
+          <span slot="supporting-text">Offline</span>
+          <md-icon slot="end">link_off</md-icon>
+        </md-list-item>
+        <!-- 如果账号太多防止被添加账号FAB阻挡 -->
+        <md-list-item></md-list-item>
+      </md-list>
+      <md-elevated-button id="add-account-btn">
+        <md-icon slot="icon">person_add</md-icon>
+        Add account
+      </md-elevated-button>
+    </div>
+
+    <!-- ── Add Account dialog (添加账号对话框) ───────────────
+         md-dialog 必须作为 <body> 的直接子元素渲染（否则固定定位/裁剪异常，
+         且 cancel/confirm 按钮可能不显示）。真实登录/存储逻辑未实现，
+         由 home.js 的 addAccount() 占位函数预留。 -->
+    <md-dialog type="modal" id="add-account-dialog">
+      <div slot="headline">Add Account</div>
+      <div slot="content">
+        <md-tabs id="add-account-tabs">
+          <md-primary-tab data-mode="offline" active>Offline</md-primary-tab>
+          <md-primary-tab data-mode="microsoft">Microsoft</md-primary-tab>
+        </md-tabs>
+
+        <div id="add-account-offline" class="add-account-panel">
+          <md-outlined-text-field id="offline-name" label="Player name" required
+            supporting-text="Offline 账号仅需一个玩家名"></md-outlined-text-field>
+        </div>
+
+        <div id="add-account-microsoft" class="add-account-panel" hidden>
+          <md-filled-button icon="open_in_new" href="https://login.live.com" target="_blank">
+            <md-icon slot="icon">open_in_new</md-icon>
+            Sign in with Microsoft</md-filled-button>
+        </div>
+      </div>
+      <div slot="actions">
+        <md-filled-tonal-button slot="cancel" value="cancel" onclick="this.parent.close()">Cancel</md-filled-tonal-button>
+        <md-filled-button slot="confirm" icon="person_add">Add</md-filled-button>
+      </div>
+    </md-dialog>
+
+    <!-- ── Main panel ─────────────────────────────────────── -->
+    <main class="account-page">
+      <div id="account-info">
+        <img id="skin" src="https://mineskin.eu/armor/body/alex/100.png" alt="body" />
+        <div id="account-details">
+          <h1 id="username">alex</h1>
+          <div>
+            <md-filled-button>Change Skin</md-filled-button>
+            <md-filled-tonal-button>Remove account</md-filled-tonal-button>
+          </div>
+          <span class="section-label">Capes</span>
+          <div class="pill-row" id="cape-options"></div>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="./src/js/home.js"></script>
+  </body>
+</html>

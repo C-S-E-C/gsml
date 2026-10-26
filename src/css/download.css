@@ -1,0 +1,44 @@
+/* ── Download page (installed versions) styles ── */
+
+ul {
+  list-style-type: none;
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.version {
+  width: 130px;
+  background-color: var(--md-sys-color-surface-container);
+  height: 130px;
+  border-radius: 15px;
+  color: var(--md-sys-color-on-surface);
+  text-align: center;
+  padding-top: 5px;
+  margin-bottom: 5px;
+  justify-content: center;
+  transform: scale(1);
+  transition: transform 0.2s;
+  cursor: pointer;
+}
+
+.version.selected {
+  outline: 2px solid var(--md-sys-color-primary);
+}
+
+.version:hover {
+  transform: scale(1.1);
+  transition: transform 0.2s;
+}
+
+.version img {
+  margin-top: 5px;
+  width: 40px;
+  height: 40px;
+  position: relative;
+}
+
+.version h3 {
+  line-height: 20px;
+  position: relative;
+}

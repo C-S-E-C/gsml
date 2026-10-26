@@ -1,0 +1,33 @@
+/* ── Settings page styles ── */
+
+.panel {
+  width: min(620px, calc(100% - 48px));
+  margin: 20px auto;
+  padding: 20px;
+  border-radius: 12px;
+  background-color: var(--md-sys-color-surface-container);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0;
+  gap: 6px;
+}
+
+.field-row input,
+.field-row select {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  padding: 8px 10px;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}

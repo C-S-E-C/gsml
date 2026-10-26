@@ -1,0 +1,244 @@
+/* ── Index (launcher shell) page styles ──
+   Only index.html loads this. It owns the top app bar, the brand logo,
+   the drag zones, the window controls and the #main iframe layout.     */
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  height: 99em;
+  overflow: hidden;
+  background: var(--md-sys-color-surface-container);
+  left: 0;
+}
+
+/* ── Custom top app bar (Material 3), window controls integrated ── */
+.tabs-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 55px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 300;
+  -webkit-app-region: drag;
+  background: var(--md-sys-color-surface-container);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  user-select: none;
+  /* border-bottom: #40484a 2px solid; */
+}
+
+/* Force Material tabs fully transparent; the app bar owns the surface */
+.tabs-bar md-tabs {
+  --md-tabs-container-color: transparent;
+  background-color: transparent !important;
+  --md-primary-tab-container-color: transparent;
+  --md-sys-color-outline-variant: transparent;
+}
+
+/* Clickable / interactive children opt out of window dragging */
+.tabs-bar md-tabs {
+  -webkit-app-region: no-drag;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  padding: 5px;
+  box-sizing: border-box;
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-surface-container-highest, #ffffff) 55%,
+    transparent
+  );
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1),
+    background-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px -1px
+    color-mix(in srgb, var(--md-sys-color-shadow, #000000) 25%, transparent);
+  -webkit-app-region: drag;
+}
+
+.brand-logo:hover {
+  transform: scale(1.08) rotate(-3deg);
+  background-color: var(--md-sys-color-surface-container-highest);
+  box-shadow: 0 4px 12px -2px
+    color-mix(in srgb, var(--md-sys-color-shadow, #000000) 30%, transparent);
+}
+
+.brand-logo:active {
+  transform: scale(0.96) rotate(0deg);
+}
+
+/* Nav tabs fill remaining width; tabs are evenly distributed inside */
+.tabs-bar md-tabs {
+  flex: 1;
+  min-width: 0;
+  height: 55px;
+  align-self: center;
+  padding: 0 2px;
+  top: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* Compact drag handle between the tabs and window controls */
+.drag-spacer {
+  flex: 0 1 32px;
+  min-width: 20px;
+  height: 100%;
+  -webkit-app-region: drag !important;
+}
+
+/* Uniform flexible width so tabs spread evenly across the bar */
+.tabs-bar md-primary-tab {
+  display: inline-flex;
+  flex: 1 1 0;
+  min-width: 64px;
+  margin-right: 0;
+  height: 100%;
+}
+
+.tabs-bar md-primary-tab * {
+  line-height: 100%;
+  height: 100%;
+}
+
+/* Window controls (Material 3 icon buttons) */
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid
+    color-mix(in srgb, var(--md-sys-color-outline-variant, #8a8a8a) 22%, transparent);
+  -webkit-app-region: drag;
+}
+
+.title-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 28px;
+  padding: 0;
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.1s ease;
+}
+
+.title-btn md-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  --md-icon-size: 20px;
+}
+
+.title-btn:hover {
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.title-btn:active {
+  transform: scale(0.92);
+}
+
+.title-btn.close:hover {
+  background-color: #e53935;
+  color: #ffffff;
+}
+
+/* Main content iframe fills the area below the 56px app bar */
+#main {
+  position: absolute;
+  top: 56px;
+  right: 0;
+  width: 100%;
+  height: calc(100% - 56px);
+  padding: 0;
+  border-radius: 10px 10px 0 0;
+  background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+#main iframe {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+#main #loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  z-index: 1;
+}
+
+/* Inline notice overlay (used by the launcher shell) */
+.notice {
+  width: 100%;
+  height: 100%;
+  background-color: var(--md-sys-color-surface-container-highest);
+  opacity: 0.5;
+  z-index: 100;
+  top: 0;
+  left: 0;
+  margin: 0;
+  overflow: hidden;
+  position: fixed;
+  display: none;
+}
+
+.notice div {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  height: 75%;
+  width: 75%;
+  top: 12.5%;
+  left: 12.5%;
+  position: relative;
+  border-radius: 25px;
+}
+
+.notice div div {
+  position: relative;
+  top: 5%;
+  left: 5%;
+  height: 90%;
+  width: 90%;
+}
+
+.notice div div header {
+  left: 10px;
+  top: 10px;
+  position: relative;
+  text-align: left;
+  justify-self: left;
+  display: flex;
+  line-height: 5px;
+  gap: 10px;
+}

@@ -1,0 +1,71 @@
+/* ── Shared global styles (theme tokens + common utility classes) ──
+   Page-specific styles live in per-page stylesheets:
+     · index.css      → top app bar, brand, window controls, #main iframe
+     · download.css   → installed version grid
+     · settings.css   → settings panels / form rows
+   Every page still loads this file for the root theme tokens.          */
+
+:root {
+  font-family: sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+
+  color: var(--md-sys-color-on-surface);
+  background-color: var(--md-sys-color-surface-container-lowest);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--md-sys-color-surface-container) var(--md-sys-color-background);
+
+  --md-sys-color-surface: var(--md-sys-color-background);
+  --md-sys-color-primary: var(--md-sys-color-on-surface);
+
+  --md-primary-tab-container-shape: border-box;
+
+  --md-ref-typeface-brand: sans-serif;
+}
+
+/* Small generic utility used across pages */
+.muted {
+  opacity: 0.75;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --md-sys-color-background: #0f1416;
+    --md-sys-color-surface-container-lowest: #0a0e10;
+    --md-sys-color-surface-container: #1b2124;
+    --md-sys-color-surface-container-highest: #2b3236;
+    --md-sys-color-on-surface: #e1e3e5;
+    --md-sys-color-primary: #3EEDE7;
+    --md-sys-color-outline-variant: #3f484a;
+
+    /* Tonal Button 容器色与文本色 (深色模式) */
+    --md-filled-tonal-button-container-color: #234e4a; /* M3 规范的 Secondary Container，微弱的青低饱和度容器 */
+    --md-filled-tonal-button-label-text-color: #a0f2e9;
+    --md-error-tonal-button-container-color: #591d23; /* 深红褐色错误容器色 */
+    --md-error-tonal-button-label-text-color: #ffdad6; /* 高对比度浅粉红字 */ /* M3 规范的 On Secondary Container，高对比度亮青字 */
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --md-sys-color-background: #f4fbf8;
+    --md-sys-color-surface-container-lowest: #ffffff;
+    --md-sys-color-surface-container: #eef5f2;
+    --md-sys-color-surface-container-highest: #e0eae6;
+    --md-sys-color-on-surface: #171d1c;
+    --md-sys-color-primary: #006a60;
+    --md-sys-color-outline-variant: #bec9c6;
+
+    /* Tonal Button 容器色与文本色 (浅色模式) */
+    --md-filled-tonal-button-container-color: #cce8e3; /* M3 规范的 Secondary Container，柔和清爽的薄荷/青绿底 */
+    --md-filled-tonal-button-label-text-color: #05201d; /* M3 规范的 On Secondary Container，深字保障对比度 */
+    --md-error-tonal-button-container-color: #ffdad6; /* 柔和的浅粉红错误容器色 */
+    --md-error-tonal-button-label-text-color: #410002; /* 深暗红字，确保对比度达标 */
+  }
+}
