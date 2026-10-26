@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+        cargo-about Handlebars template for Tauri's License/About window.
+
+        Generated at build time and shipped standalone (single HTML file, all
+        styles inlined). No external framework — just plain, neutral styling
+        that follows the system dark/light preference.
+    -->
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            font-size: 14px;
+            line-height: 20px;
+            color: var(--text);
+            background-color: var(--bg);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            overflow-y: auto;
+            scrollbar-color: var(--md-sys-color-surface-container) var(--md-sys-color-background);
+        }
+
+        /* Material 3 palette (system light/dark) */
+        :root {
+            --bg: var(--md-sys-color-background, #f4fbf8);
+            --panel: var(--md-sys-color-surface-container, #eef5f2);
+            --panel-strong: var(--md-sys-color-surface-container-highest, #e0eae6);
+            --text: var(--md-sys-color-on-surface, #171d1c);
+            --muted: #5d6462;
+            --link: var(--md-sys-color-primary, #006a60);
+            --border: var(--md-sys-color-outline-variant, #bec9c6);
+            --code-bg: var(--md-sys-color-surface-container-lowest, #ffffff);
+
+            --md-sys-color-background: #f4fbf8;
+            --md-sys-color-surface-container-lowest: #ffffff;
+            --md-sys-color-surface-container: #eef5f2;
+            --md-sys-color-surface-container-highest: #e0eae6;
+            --md-sys-color-on-surface: #171d1c;
+            --md-sys-color-primary: #006a60;
+            --md-sys-color-outline-variant: #bec9c6;
+
+            /* Tonal Button 容器色与文本色 (浅色模式) */
+            --md-filled-tonal-button-container-color: #cce8e3;
+            --md-filled-tonal-button-label-text-color: #05201d;
+            --md-error-tonal-button-container-color: #ffdad6;
+            --md-error-tonal-button-label-text-color: #410002;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f1416;
+                --panel: #1b2124;
+                --panel-strong: #2b3236;
+                --text: #e1e3e5;
+                --muted: #aeb7b9;
+                --link: #3EEDE7;
+                --border: #3f484a;
+                --code-bg: #0a0e10;
+
+                --md-sys-color-background: #0f1416;
+                --md-sys-color-surface-container-lowest: #0a0e10;
+                --md-sys-color-surface-container: #1b2124;
+                --md-sys-color-surface-container-highest: #2b3236;
+                --md-sys-color-on-surface: #e1e3e5;
+                --md-sys-color-primary: #3EEDE7;
+                --md-sys-color-outline-variant: #3f484a;
+
+                /* Tonal Button 容器色与文本色 (深色模式) */
+                --md-filled-tonal-button-container-color: #234e4a;
+                --md-filled-tonal-button-label-text-color: #a0f2e9;
+                --md-error-tonal-button-container-color: #591d23;
+                --md-error-tonal-button-label-text-color: #ffdad6;
+            }
+        }
+
+        /* ── Top bar: back button + title ─────────────────────── */
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background-color: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            flex: 0 0 auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background-color: var(--panel);
+            color: var(--text);
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+
+        .back-btn:hover {
+            background-color: var(--panel-strong);
+        }
+
+        .back-btn:active {
+            opacity: 0.8;
+        }
+
+        .back-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .topbar-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* ── Content ──────────────────────────────────────────── */
+        .container {
+            width: 100%;
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 24px 20px 40px;
+        }
+
+        .intro {
+            margin: 12px 0 24px;
+        }
+
+        .intro p {
+            margin: 6px 0 0;
+            color: var(--muted);
+        }
+
+        h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 28px 0 12px;
+            color: var(--text);
+        }
+
+        a {
+            color: var(--link);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* ── Overview of licenses ────────────────────────────── */
+        .licenses-overview {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .licenses-overview li {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background-color: var(--panel);
+            padding: 4px 10px;
+            font-size: 0.85rem;
+        }
+
+        /* ── Licenses list ────────────────────────────────────── */
+        .licenses-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .license {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background-color: var(--panel);
+            padding: 14px 16px;
+        }
+
+        .license h3 {
+            margin: 0 0 4px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .license h4 {
+            margin: 12px 0 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        .license-used-by {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .license-used-by li {
+            margin: 2px 0;
+        }
+
+        .license-text {
+            margin: 12px 0 0;
+            padding: 12px 14px;
+            max-height: 240px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+            font-size: 0.78rem;
+            line-height: 1.5;
+            color: var(--text);
+            background-color: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="topbar">
+        <button class="back-btn" title="Back" onclick="window.history.back()" aria-label="Back">
+            <!-- simple chevron-left arrow -->
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+            </svg>
+        </button>
+        <span class="topbar-title">Third Party Licenses</span>
+    </div>
+
+    <main class="container">
+        <h2>Overview of licenses:</h2>
+        <ul class="licenses-overview">
+            {{#each overview}}
+            <li><a href="#{{id}}">{{name}}</a> ({{count}})</li>
+            {{/each}}
+        </ul>
+
+        <h2>All license text:</h2>
+        <ul class="licenses-list">
+            {{#each licenses}}
+            <li class="license">
+                <h3 id="{{id}}">{{name}}</h3>
+                <h4>Used by:</h4>
+                <ul class="license-used-by">
+                    {{#each used_by}}
+                    <li><a href="{{#if crate.repository}} {{crate.repository}} {{else}} https://crates.io/crates/{{crate.name}} {{/if}}">{{crate.name}} {{crate.version}}</a></li>
+                    {{/each}}
+                </ul>
+                <pre class="license-text">{{text}}</pre>
+            </li>
+            {{/each}}
+        </ul>
+    </main>
+</body>
+
+</html>
