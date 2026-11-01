@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/generate-licenses.mjs && vite",
+    "dev": "vite",
     "build": "node scripts/generate-licenses.mjs && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
@@ -16,6 +16,7 @@
   "dependencies": {
     "@material/web": "^2.5.0",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-deep-link": "~2.6.3",
     "@tauri-apps/plugin-fs": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2.7.2"
   }

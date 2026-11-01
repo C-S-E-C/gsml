@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await refreshInstalledVersions();
     localStorage.setItem("StartTimes", Number(localStorage.getItem("StartTimes")) + 1);
     sidebar_button('home', document.querySelector('.sidebar button'));
+    document.getElementById("main").addEventListener('contextmenu', event => event.preventDefault());
 });
 
 // ── Global bridge ────────────────────────────────────────────────────

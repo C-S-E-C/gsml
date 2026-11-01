@@ -12,7 +12,9 @@ const app = {
     version: '1.0.0',
 };
 
-const invoke = window.__TAURI_INTERNALS__.invoke;
+import { invoke } from '@tauri-apps/api/core';
+// Tauri 2 事件监听（withGlobalTauri 注入的 window.__TAURI__）
+import { listen } from '@tauri-apps/api/event';
 const MAX_PLAYER_NAME_LENGTH = 16;
 
 console.log(`[ALPHA] ${app.version}`);
@@ -20,6 +22,7 @@ console.log(`[PATH] ${location.pathname}`);
 
 export const APP = app;
 export const invokeFn = invoke;
+export const listenFn = listen;
 export const MAX_PLAYER_NAME = MAX_PLAYER_NAME_LENGTH;
 
 export function isRootPage() {
@@ -89,3 +92,4 @@ export async function refreshInstalledVersions() {
         return JSON.parse(localStorage.getItem('MC_VERSIONS') || '[]');
     }
 }
+

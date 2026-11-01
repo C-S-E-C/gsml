@@ -12,19 +12,8 @@
     <!-- ── Accounts (账号选择) ─────────────────────────────── -->
     <div class="sidebar">
       <md-list class="accounts-list" id="accounts-list">
-        <!-- 示例账户数据 -->
-        <md-list-item class="account-item" data-account="alex" onclick="chooseAccount('alex')">
-          <img slot="start" src="https://mineskin.eu/helm/alex/64.png" alt="alex" />
-          <span slot="headline">alex</span>
-          <span slot="supporting-text">Offline</span>
-          <md-icon slot="end">link_off</md-icon>
-        </md-list-item>
-        <md-list-item class="account-item" data-account="owner" onclick="chooseAccount('owner')">
-          <img slot="start" src="https://mineskin.eu/helm/owner/64.png" alt="owner" />
-          <span slot="headline">owner</span>
-          <span slot="supporting-text">Offline</span>
-          <md-icon slot="end">link_off</md-icon>
-        </md-list-item>
+        <!-- 账号列表由 home.js 调用 list_accounts 动态渲染（无示例数据） -->
+
         <!-- 如果账号太多防止被添加账号FAB阻挡 -->
         <md-list-item></md-list-item>
       </md-list>
@@ -36,8 +25,9 @@
 
     <!-- ── Add Account dialog (添加账号对话框) ───────────────
          md-dialog 必须作为 <body> 的直接子元素渲染（否则固定定位/裁剪异常，
-         且 cancel/confirm 按钮可能不显示）。真实登录/存储逻辑未实现，
-         由 home.js 的 addAccount() 占位函数预留。 -->
+         且 cancel/confirm 按钮可能不显示）。登录/存储逻辑由 home.js 实现：
+         confirm 按钮无内联 onclick，由 JS 调用 login_offline / login_microsoft，
+         成功后才由 JS 关闭对话框；微软登录通过 glow-squid://ms-auth deeplink 回调。 -->
     <md-dialog type="modal" id="add-account-dialog">
       <div slot="headline">Add Account</div>
       <div slot="content">
@@ -52,33 +42,58 @@
         </div>
 
         <div id="add-account-microsoft" class="add-account-panel" hidden>
-          <md-filled-button icon="open_in_new" onclick="openUrl('https://login.live.com')" target="_blank">
-            <md-icon slot="icon">open_in_new</md-icon>
-            Sign in with Microsoft</md-filled-button>
+          <p style="margin:0;line-height:1.6;">
+            点击 Add 后将打开系统浏览器完成微软登录，登录结果通过
+            glow-squid://ms-auth deeplink 回调返回，无需手动输入代码。
+          </p>
+          <!-- 登录进度：Rust 每一步广播 ms-login-progress 事件，home.js 更新 -->
+          <div class="ms-login-progress" id="ms-login-progress" hidden>
+            <md-linear-progress id="ms-login-bar" value="0"></md-linear-progress>
+            <p class="ms-login-step" id="ms-login-step"></p>
+          </div>
         </div>
       </div>
       <div slot="actions">
         <md-filled-tonal-button slot="cancel" value="cancel" onclick="document.getElementById('add-account-dialog').close()">Cancel</md-filled-tonal-button>
-        <md-filled-button slot="confirm" onclick="document.getElementById('add-account-dialog').close('add')" icon="person_add">Add</md-filled-button>
+        <md-filled-button slot="confirm" icon="person_add">Add</md-filled-button>
       </div>
     </md-dialog>
+
+    <!-- ── Remove Account menu (删除账号确认菜单) ─────────────
+         点 Remove account 弹出 md-menu（不再弹 md-dialog）。点
+         「确认删除」菜单项后菜单自动关闭，由 home.js 调用
+         delete_account 并刷新账号列表；点击菜单外区域即取消。 -->
+    <md-menu id="remove-account-menu" anchor="remove-account-btn"
+      corner="BOTTOM_START" positioning="fixed">
+      <md-menu-item id="confirm-remove-account-btn">
+        <md-icon slot="start">delete</md-icon>
+        <div slot="headline">Confirm deletion</div>
+      </md-menu-item>
+    </md-menu>
 
     <!-- ── Main panel ─────────────────────────────────────── -->
     <main class="account-page">
       <div id="account-info">
-        <img id="skin" src="https://mineskin.eu/armor/body/alex/100.png" alt="body" />
+        <img id="skin" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="skin" />
         <div id="account-details">
-          <h1 id="username">alex</h1>
-          <div>
-            <md-filled-button>Change Skin</md-filled-button>
-            <md-filled-tonal-button>Remove account</md-filled-tonal-button>
+          <h1 id="username">No account</h1>
+          <div class="pill-row">
+            <md-filled-button id="change-skin-btn">Change Skin</md-filled-button>
+            <md-filled-tonal-button id="remove-account-btn">Remove account</md-filled-tonal-button>
+            <md-filled-button id="apply-cape-btn" hidden>Apply Cape Changes</md-filled-button>
           </div>
-          <span class="section-label">Capes</span>
+          <!-- 换肤/换披风的错误或进行中提示（home.js 填充，英文文案） -->
+          <p class="skin-cape-message" id="skin-cape-message" role="alert"></p>
+          <span class="section-label" id="capes-label">Capes</span>
           <div class="pill-row" id="cape-options"></div>
+          <div style="height: 80px;"></div>
         </div>
       </div>
+      <div class="pill-row start-mc">
+        <md-filled-select id="launch-ver-select"></md-filled-select>
+        <md-branded-fab size="large" label="Launch" id="launch-btn"></md-branded-fab>
+      </div>
     </main>
-
     <script type="module" src="./src/js/home.js"></script>
   </body>
 </html>

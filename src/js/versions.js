@@ -21,7 +21,7 @@ function getVersionIcon(version) {
         return neoforgeImg;
     } else if (lowerVersion.includes("forge")) {
         return anvilImg;
-    } else if (/^1\.\d+/.test(version)) {
+    } else if (/\.\d+/.test(version)) {
         return grassBlockImg;
     } else if (lowerVersion.includes("w") || lowerVersion.includes("snapshot")) {
         return dirtImg;

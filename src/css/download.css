@@ -42,3 +42,7 @@ ul {
   line-height: 20px;
   position: relative;
 }
+
+img{
+  image-rendering: pixelated;
+}

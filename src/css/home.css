@@ -41,6 +41,7 @@ body {
     --md-list-item-trailing-space: 10px;
     --md-list-item-label-text-line-height: 22px;
     transition: background-color 0.2s ease-in-out;
+    animation: fadeIn 0.25s ease-in-out forwards;
 }
 
 .accounts-list .account-item:hover,
@@ -136,11 +137,6 @@ body {
     --md-filled-tonal-button-container-color: var(--md-error-tonal-button-container-color) !important;
     --md-filled-tonal-button-label-text-color: var(--md-error-tonal-button-label-text-color) !important;
 }
-
-#account-details div {
-    display: flex;
-    gap: 5px;
-}
 /* Skin / Cape toggle (玩家皮肤/披风切换) */
 .section-label {
     font-size: 0.85rem;
@@ -175,6 +171,51 @@ body {
     background-color: var(--md-sys-color-primary);
     color: var(--md-sys-color-on-primary);
     border-color: var(--md-sys-color-primary);
+}
+
+/* ── 披风 pill + Apply Cape Changes 按钮 ── */
+/* 带披风图的 pill：无 padding 无文字，只显示图片（名字在 title 悬停提示） */
+.cape-pill {
+    overflow: hidden;
+    border-radius: 4px;
+    /* 材质加载中/失败时兜底一个可点击的最小尺寸 */
+    width: 62px;
+    height: 128px;
+    border: 3px solid var(--md-sys-color-outline-variant);
+    background-color: var(--md-sys-color-outline-variant);
+    animation: fadeIn 0.25s ease-in-out forwards;
+}
+.cape-pill-textured {
+    padding: 0;
+    line-height: 0;
+    width: 90px;
+    height: 144px;
+}
+
+.cape-pill-textured .cape-pill-img {
+    border-radius: inherit;
+}
+
+/* 披风裁剪图 10×16 放大 2 倍展示，像素风格保持锐利 */
+.cape-pill-img {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: block;
+    image-rendering: pixelated;
+}
+
+/* Apply Cape Changes 按钮：贴在 pills 下方，宽度收缩到内容 */
+#apply-cape-btn[hidden] {
+    display: none;
+}
+
+/* 换肤/换披风提示行（错误或进行中信息，随内容显示） */
+.skin-cape-message {
+    margin: 6px 0 0;
+    font-size: 0.85rem;
+    color: var(--md-sys-color-error);
+    min-height: 0;
 }
 
 /* ── Add Account dialog (添加账号对话框) ─────────────────── */
@@ -237,10 +278,87 @@ body {
     margin: 0;
 }
 
+/* 微软登录进度条（Rust 广播 ms-login-progress 事件，home.js 更新） */
+.ms-login-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ms-login-progress[hidden] {
+    display: none;
+}
+
+.ms-login-progress md-linear-progress {
+    width: 100%;
+}
+
+.ms-login-step {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--md-sys-color-on-surface-variant);
+}
+
 ::-webkit-scrollbar {
     width: 10px;
 }
 ::-webkit-scrollbar-thumb {
     background-color: var(--md-sys-color-outline-variant);
     border-radius: 5px;
+}
+
+/* 账号列表头像（8×8 head.png 放大渲染，pixelated 保持像素风） */
+.accounts-list md-list-item.account-item img[slot="start"] {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+    image-rendering: pixelated;
+    object-fit: cover;
+    background-color: var(--md-sys-color-surface-container-highest);
+}
+
+.start-mc {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: calc(100% - 280px);
+    height: 75px;
+    background-color: transparent;
+    padding: 0 20px 0 20px;
+    gap: 10px;
+    --md-sys-shape-corner-large: 16px;
+    --md-sys-shape-corner-extra-small: 16px;
+    --md-sys-shape-corner-none: 16px;
+    --md-filled-select-text-field-focus-active-indicator-height: 0;
+    --md-filled-select-text-field-hover-active-indicator-height: 0;
+    --md-filled-select-text-field-active-indicator-height: 0;
+    --md-fab-branded-container-shadow-color: transparent;
+}
+
+.start-mc md-filled-select {
+    width: calc(80% - 10px);
+}
+
+.start-mc md-fab {
+    width: 80%;
+}
+
+.start-mc img {
+    image-rendering: pixelated;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        ::before{
+            filter: blur(25px);
+        }
+    }
+    to {
+        opacity: 1;
+        ::before{
+            filter: blur(0px);
+        }
+    }
 }
