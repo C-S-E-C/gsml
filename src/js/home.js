@@ -10,7 +10,7 @@ import {
     isPage,
     escapeHtml,
     invokeFn,
-    listenFn,
+    onPageEvent,
 } from './main.js';
 
 import fabricImg from '../assets/fabric.png';
@@ -739,14 +739,11 @@ function applyMsLoginProgress(payload) {
     }
 }
 
-// 在 invoke 登录命令之前订阅，避免漏掉最早的事件；返回 unlisten 函数
-// （事件 API 不可用时退化为 no-op）。
+// 在 invoke 登录命令之前订阅，避免漏掉最早的事件；返回清理函数。
+// iframe 内由顶层壳（index.js）订阅并转发；页面独立打开时直接订阅。
 async function subscribeMsLoginProgress() {
-    if (typeof listenFn !== 'function') {
-        return () => {};
-    }
-    return listenFn('ms-login-progress', (event) => {
-        applyMsLoginProgress(event.payload);
+    return onPageEvent('ms-login-progress', (payload) => {
+        applyMsLoginProgress(payload);
     });
 }
 

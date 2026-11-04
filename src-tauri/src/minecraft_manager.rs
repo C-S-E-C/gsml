@@ -1,9 +1,12 @@
 //! minecraft_manager —— 本地版本扫描、远程版本列表、版本安装（vanilla / fabric / forge / neoforge）
 //!
-//! 进度事件 install-progress（前端 listen）：{ name, stage, done, total, label }
+//! 进度事件 install-progress（前端 listen）：
+//!   { name, stage, done, total, bytesDone, bytesTotal, speed, label }
 //!   - name: 正在安装的版本 id（forge/neoforge 以安装器实际创建的目录名为准）
 //!   - stage: json / client / libraries / natives / assets / installer / done
 //!     client 阶段 done/total 为字节数；libraries/natives/assets 为文件数；其余 0..1
+//!   - bytesDone/bytesTotal: 已下载/总字节数（0=未知），批量下载阶段提供平滑进度条
+//!   - speed: 估算速度（字节/秒）；批量下载 16 路并发，120ms 节流广播
 //! 取消：cancel_install() 置位，安装流程在每个阶段/分片检查；同时间只允许一个安装任务。
 
 use std::collections::HashSet;
@@ -11,9 +14,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -94,11 +97,46 @@ static BIG_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 });
 
 fn emit_install(app: &AppHandle, name: &str, stage: &str, done: u64, total: u64, label: &str) {
+    emit_install_full(app, name, stage, done, total, 0, 0, 0, label);
+}
+
+/// 完整进度负载。done/total：文件数（client/installer 阶段为字节数）；
+/// bytesDone/bytesTotal：字节级进度（0=未知）；speed：估算速度（字节/秒）。
+/// 前端按需取用，缺失字段当 0 处理，向后兼容旧格式。
+fn emit_install_full(
+    app: &AppHandle,
+    name: &str,
+    stage: &str,
+    done: u64,
+    total: u64,
+    bytes_done: u64,
+    bytes_total: u64,
+    speed: u64,
+    label: &str,
+) {
     let payload = serde_json::json!({
-        "name": name, "stage": stage, "done": done, "total": total, "label": label
+        "name": name, "stage": stage, "done": done, "total": total,
+        "bytesDone": bytes_done, "bytesTotal": bytes_total, "speed": speed,
+        "label": label,
     });
     if let Err(e) = app.emit("install-progress", payload) {
         eprintln!("[mc-install] 进度事件发送失败: {e}");
+    }
+}
+
+/// 字节数人性化显示（进度 label 用）：0 B / 12.3 KB / 4.5 MB / 1.2 GB
+fn fmt_bytes(n: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut v = n as f64;
+    let mut i = 0usize;
+    while v >= 1024.0 && i + 1 < UNITS.len() {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{n} B")
+    } else {
+        format!("{v:.1} {}", UNITS[i])
     }
 }
 
@@ -121,12 +159,14 @@ async fn fetch_text(url: &str) -> Result<String, String> {
         .map_err(|e| format!("读取响应失败 {url}: {e}"))
 }
 
-/// 下载到指定路径；dest 已存在且尺寸匹配（尺寸未知时存在即算）则跳过
+/// 下载到指定路径；dest 已存在且尺寸匹配（尺寸未知时存在即算）则跳过。
+/// 传入 prog 时把每个写入的字节块累加进共享进度并节流广播。
 async fn download_file(
     client: &reqwest::Client,
     url: &str,
     dest: &Path,
     expected_size: Option<u64>,
+    prog: Option<&PoolProgress>,
 ) -> Result<(), String> {
     if let Ok(meta) = fs::metadata(dest) {
         if meta.is_file() && expected_size.map_or(true, |s| meta.len() == s) {
@@ -147,6 +187,10 @@ async fn download_file(
         check_cancel()?;
         file.write_all(&chunk).map_err(io_err)?;
         written += chunk.len() as u64;
+        if let Some(p) = prog {
+            p.done_bytes.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+            p.emit(false, "下载中…");
+        }
     }
     if let Some(size) = expected_size {
         if size > 0 && written != size {
@@ -157,7 +201,42 @@ async fn download_file(
     Ok(())
 }
 
-/// 并行（8 路）下载一批文件并广播进度；任一失败汇总报错
+/// 批量下载共享进度：文件数 + 字节数，120ms 节流广播 + 速度估算
+struct PoolProgress {
+    app: AppHandle,
+    pname: String,
+    stage: String,
+    total_files: u64,
+    total_bytes: u64,
+    done_files: AtomicU64,
+    done_bytes: AtomicU64,
+    /// (上次广播时刻, 已写字节, 已完成文件) —— 估算速度用
+    last: Mutex<(Instant, u64, u64)>,
+}
+
+impl PoolProgress {
+    /// forced=true 立即广播（阶段开始/结束）；false 时 120ms 节流
+    fn emit(&self, forced: bool, label: &str) {
+        let mut last = self.last.lock().unwrap();
+        let now = Instant::now();
+        let dt = now.duration_since(last.0);
+        if !forced && dt < Duration::from_millis(120) {
+            return;
+        }
+        let files = self.done_files.load(Ordering::Relaxed);
+        let bytes = self.done_bytes.load(Ordering::Relaxed);
+        let speed = bytes.saturating_sub(last.1) as f64 / dt.as_secs_f64().max(0.001);
+        *last = (now, bytes, files);
+        drop(last);
+        emit_install_full(
+            &self.app, &self.pname, &self.stage,
+            files, self.total_files, bytes, self.total_bytes, speed as u64, label,
+        );
+    }
+}
+
+/// 并行（16 路常驻 worker 池，任务由原子下标分发，无需等整批）下载一批文件；
+/// 广播文件数 + 字节数 + 速度进度；任一失败汇总报错
 async fn download_all(
     app: &AppHandle,
     items: Vec<(String, PathBuf, Option<u64>)>,
@@ -168,46 +247,66 @@ async fn download_all(
     if total == 0 {
         return Ok(());
     }
-    emit_install(app, pname, stage, 0, total, &format!("共 {total} 个文件…"));
-    let done = Arc::new(AtomicU32::new(0));
+    let bytes_total: u64 = items.iter().map(|(_, _, s)| s.unwrap_or(0)).sum();
+    let progress = Arc::new(PoolProgress {
+        app: app.clone(),
+        pname: pname.to_string(),
+        stage: stage.to_string(),
+        total_files: total,
+        total_bytes: bytes_total,
+        done_files: AtomicU64::new(0),
+        done_bytes: AtomicU64::new(0),
+        last: Mutex::new((Instant::now(), 0, 0)),
+    });
+    let head = if bytes_total > 0 {
+        format!("共 {total} 个文件 · 约 {}", fmt_bytes(bytes_total))
+    } else {
+        format!("共 {total} 个文件…")
+    };
+    progress.emit(true, &head);
+
+    const WORKERS: usize = 16;
+    let items = Arc::new(items);
+    let next = Arc::new(AtomicUsize::new(0));
     let failures: Arc<Mutex<Vec<String>>> = Default::default();
-    let step = (total / 25).max(1); // 大批量时限流广播
-    for chunk in items.chunks(8) {
-        check_cancel()?;
-        let mut handles = Vec::with_capacity(chunk.len());
-        for (url, dest, size) in chunk {
-            let client = http_client();
-            let app = app.clone();
-            let done = done.clone();
-            let failures = failures.clone();
-            let url = url.clone();
-            let dest = dest.clone();
-            let size = *size;
-            let pname = pname.to_string();
-            let stage = stage.to_string();
-            handles.push(tauri::async_runtime::spawn(async move {
-                if let Err(e) = download_file(&client, &url, &dest, size).await {
+    let mut handles = Vec::with_capacity(WORKERS);
+    for _ in 0..WORKERS {
+        let items = Arc::clone(&items);
+        let next = Arc::clone(&next);
+        let progress = Arc::clone(&progress);
+        let failures = Arc::clone(&failures);
+        let client = http_client();
+        handles.push(tauri::async_runtime::spawn(async move {
+            loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= items.len() {
+                    break;
+                }
+                if check_cancel().is_err() {
+                    break; // 已取消：worker 直接退出，外面统一报“已取消安装”
+                }
+                let (url, dest, size) = &items[i];
+                if let Err(e) = download_file(&client, url, dest, *size, Some(&progress)).await {
                     failures.lock().unwrap().push(format!("{url}: {e}"));
                 }
-                let n = done.fetch_add(1, Ordering::Relaxed) as u64 + 1;
-                if n % step == 0 || n == total {
-                    emit_install(&app, &pname, &stage, n, total, "下载中…");
-                }
-            }));
-        }
-        for h in handles {
-            h.await.map_err(|e| format!("下载任务异常退出: {e}"))?;
-        }
+                progress.done_files.fetch_add(1, Ordering::Relaxed);
+                progress.emit(false, "下载中…");
+            }
+        }));
     }
+    for h in handles {
+        h.await.map_err(|e| format!("下载任务异常退出: {e}"))?;
+    }
+    check_cancel()?;
     let fails = failures.lock().unwrap();
     if !fails.is_empty() {
         return Err(format!("{} 个文件下载失败，首个错误：{}", fails.len(), fails[0]));
     }
-    emit_install(app, pname, stage, total, total, "下载完成");
+    progress.emit(true, "下载完成");
     Ok(())
 }
 
-/// 大文件流式下载（无总超时），广播字节级进度
+/// 大文件流式下载（无总超时），广播字节级进度 + 速度
 async fn download_with_progress(
     app: &AppHandle,
     pname: &str,
@@ -224,19 +323,28 @@ async fn download_with_progress(
     let total = resp.content_length().unwrap_or(0);
     let mut file = fs::File::create(dest).map_err(io_err)?;
     let mut written: u64 = 0;
-    let mut last: u64 = 0;
+    let mut last_bytes: u64 = 0;
+    let mut last_time = Instant::now();
     while let Some(chunk) = resp.chunk().await
         .map_err(|e| format!("下载中断 {url}: {e}"))?
     {
         check_cancel()?;
         file.write_all(&chunk).map_err(io_err)?;
         written += chunk.len() as u64;
-        if written - last >= (total / 20).max(512 * 1024) {
-            last = written;
-            emit_install(app, pname, stage, written, total.max(1), "下载中…");
+        let now = Instant::now();
+        if written - last_bytes >= (total / 20).max(512 * 1024)
+            && now.duration_since(last_time) >= Duration::from_millis(80)
+        {
+            let speed = (written - last_bytes) as f64 / now.duration_since(last_time).as_secs_f64();
+            last_bytes = written;
+            last_time = now;
+            emit_install_full(
+                app, pname, stage, written, total.max(1),
+                written, total, speed as u64, "下载中…",
+            );
         }
     }
-    emit_install(app, pname, stage, written, total.max(1), "下载完成");
+    emit_install_full(app, pname, stage, written, total.max(1), written, total, 0, "下载完成");
     Ok(())
 }
 
@@ -369,7 +477,7 @@ async fn extract_natives(app: &AppHandle, pname: &str, vdir: &Path, libs: &[Valu
     for (i, (url, name)) in jars.into_iter().enumerate() {
         check_cancel()?;
         let tmp = std::env::temp_dir().join(format!("gsml-{name}"));
-        download_file(&client, &url, &tmp, None).await?;
+        download_file(&client, &url, &tmp, None, None).await?;
         extract_dlls(&tmp, &natives_dir)?;
         let _ = fs::remove_file(&tmp);
         emit_install(app, pname, "natives", (i + 1) as u64, total, "下载并解压 natives…");
@@ -549,7 +657,7 @@ async fn install_installer_based(
     // 4) 下载官方安装器
     let installer = std::env::temp_dir().join(format!("gsml-{version_id}-installer.jar"));
     emit_install(app, version_id, "installer", 0, 1, "下载官方安装器…");
-    download_file(&BIG_CLIENT, installer_url, &installer, None).await?;
+    download_with_progress(app, version_id, "installer", installer_url, &installer).await?;
     check_cancel()?;
 
     // 5) 运行安装器（可能要几分钟，阻塞等退出）

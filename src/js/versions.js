@@ -16,7 +16,7 @@ import {
     isPage,
     escapeHtml,
     invokeFn,
-    listenFn,
+    onPageEvent,
 } from './main.js';
 
 // Icons are bundled through Vite; imported so the build hashes them.
@@ -304,9 +304,31 @@ async function startInstall() {
     }
 }
 
-// install-progress 负载：{ name, stage, done, total, label }
+// 字节数人性化显示：0 时不显示；'12.3 KB' / '4.5 MB' / '1.2 GB'
+function fmtBytes(n) {
+    if (!Number.isFinite(n) || n <= 0) {
+        return '';
+    }
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let v = n;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i += 1;
+    }
+    return i === 0 ? `${v} B` : `${v.toFixed(1)} ${units[i]}`;
+}
+
+// install-progress 负载：
+//   { name, stage, done, total, bytesDone, bytesTotal, speed, label }
+//   done/total：libraries/natives/assets 为文件数；client/installer 阶段为字节数
+//   bytesDone/bytesTotal：字节级进度（0=未知）；speed：估算速度（字节/秒）
 function onProgress(event) {
-    const { stage, done, total, label } = event.payload || {};
+    const p = event.payload || {};
+    const { stage, done = 0, total = 0, label } = p;
+    const bytesDone = p.bytesDone || 0;
+    const bytesTotal = p.bytesTotal || 0;
+    const speed = p.speed || 0;
     const bar = $('dl-progress-bar');
     if (stage === 'done') {
         bar.indeterminate = false;
@@ -317,13 +339,36 @@ function onProgress(event) {
     if (!installing) {
         setInstalling(true);
     }
-    if (total > 0) {
+    // 进度条：优先字节进度（更平滑），其次文件数，都没有则不确定
+    if (bytesTotal > 0) {
+        bar.indeterminate = false;
+        bar.value = Math.min(1, bytesDone / bytesTotal);
+    } else if (total > 0) {
         bar.indeterminate = false;
         bar.value = Math.min(1, done / total);
     } else {
         bar.indeterminate = true;
     }
-    $('dl-progress-label').textContent = label || `${stage} ${done}/${total}`;
+    // 文字：阶段文件数 · 已下字节/总字节 · 速度
+    const bits = [];
+    if (stage === 'client') {
+        // client 阶段 done/total 本身就是字节数
+        const d = fmtBytes(done) || fmtBytes(bytesDone);
+        const t = fmtBytes(total) || fmtBytes(bytesTotal);
+        bits.push(t ? `client ${d} / ${t}` : `client ${d}`);
+    } else {
+        bits.push(`${stage} ${done}/${total}`);
+        const bd = fmtBytes(bytesDone);
+        const bt = fmtBytes(bytesTotal);
+        if (bt) {
+            bits.push(bd ? `${bd} / ${bt}` : bt);
+        }
+    }
+    if (speed > 0) {
+        bits.push(`${fmtBytes(speed)}/s`);
+    }
+    $('dl-progress-label').textContent
+        = [label || '下载中…', bits.join(' · ')].filter(Boolean).join(' · ');
 }
 
 // ── 已安装版本 ───────────────────────────────────────────────────────
@@ -396,7 +441,7 @@ function bindEvents() {
     });
 
     // 安装进度（全局事件，无论在哪个视图都同步到详情进度区）
-    listenFn('install-progress', onProgress);
+    void onPageEvent('install-progress', (payload) => onProgress({ payload }));
 }
 
 async function initVersionsPage() {
