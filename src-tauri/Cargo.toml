@@ -33,6 +33,7 @@ rand = "0.10.3"
 sha2 = "0.11.1"
 md-5 = "0.11.0"
 base64 = "0.23.1"
+dirs = "7.0.0"
 # 皮肤贴图解码 / 渲染（只需 PNG）
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }

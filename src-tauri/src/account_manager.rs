@@ -5,7 +5,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use md5::Md5;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
@@ -33,15 +33,13 @@ const LOGIN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 // 之前每次调用都 new 一个 Client，导致披风/皮肤批量下载时每个请求
 // 都要重新做 TCP+TLS 握手，这是首次加载慢的根源。
 pub(crate) fn http_client() -> reqwest::Client {
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    CLIENT
-        .get_or_init(|| {
-            reqwest::Client::builder()
-                .timeout(Duration::from_secs(30))
-                .build()
-                .expect("build reqwest client")
-        })
-        .clone()
+    static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("build reqwest client")
+    });
+    CLIENT.clone()
 }
 
 // ── 登录进度广播 ─────────────────────────────────────────────────────────
@@ -122,10 +120,10 @@ fn describe_json(value: &serde_json::Value, max_chars: usize) -> String {
     truncate(&value.to_string(), max_chars)
 }
 
-fn unix_now() -> Result<i64, String> {
+fn unix_now() -> Result<u32, String> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
+        .map(|d| d.as_secs() as u32)
         .map_err(|e| e.to_string())
 }
 
@@ -172,7 +170,7 @@ pub fn login_offline(db: State<'_, Db>, name: String) -> Result<AccountRow, Stri
     )
     .map_err(|e| e.to_string())?;
 
-    let (id, created_at): (i64, i64) = conn
+    let (id, created_at): (u16, u32) = conn
         .query_row(
             "SELECT id, created_at FROM accounts WHERE uuid = ?1",
             rusqlite::params![uuid],
@@ -369,7 +367,7 @@ pub async fn login_microsoft(app: AppHandle, db: State<'_, Db>) -> Result<Accoun
     let now = unix_now()?;
     //    显式作用域：std MutexGuard 必须在 await 之前释放（NLL 有时对
     //    drop(conn) 的写法仍报 "future cannot be sent"，用块作用域最稳）。
-    let (id, created_at): (i64, i64) = {
+    let (id, created_at): (u16, u32) = {
         let conn = db.lock()?;
         conn.execute(
             "INSERT INTO accounts(uuid, name, account_type, msa_id, last_used)
@@ -392,7 +390,7 @@ pub async fn login_microsoft(app: AppHandle, db: State<'_, Db>) -> Result<Accoun
 
     // 9) 皮肤缓存（best effort：失败只打 stderr，绝不影响登录成功）
     if let Some((skin_url, slim)) = profile.active_skin() {
-        skin_manager::cache_microsoft_skin(&app, &profile.id, skin_url, slim).await;
+        skin_manager::cache_microsoft_skin(&profile.id, skin_url, slim).await;
     }
 
     Ok(AccountRow {
@@ -639,7 +637,7 @@ fn keyring_get(key: &str) -> Result<Option<String>, String> {
 /// 按 account_id 查微软账号的 msa_id（uuid, msa_id）
 fn lookup_msa_id(
     conn: &rusqlite::Connection,
-    account_id: i64,
+    account_id: u16,
 ) -> Result<(String, String), String> {
     let (uuid, msa_id): (String, Option<String>) = conn
         .query_row(
@@ -742,7 +740,7 @@ fn profile_to_json(profile: &McProfile, uuid: &str) -> serde_json::Value {
 /// 是 ms_account_details / ms_change_skin / ms_change_cape 的公共入口。
 async fn account_profile(
     db: &State<'_, Db>,
-    account_id: i64,
+    account_id: u16,
 ) -> Result<McProfile, String> {
     let (_uuid, msa_id) = {
         let conn = db.lock()?;
@@ -761,7 +759,7 @@ async fn account_profile(
 #[tauri::command]
 pub async fn ms_account_details(
     db: State<'_, Db>,
-    account_id: i64,
+    account_id: u16,
 ) -> Result<serde_json::Value, String> {
     let uuid = {
         let conn = db.lock()?;
@@ -776,9 +774,8 @@ pub async fn ms_account_details(
 /// 成功后返回最新 profile JSON（同 ms_account_details）。
 #[tauri::command]
 pub async fn ms_change_skin(
-    app: AppHandle,
     db: State<'_, Db>,
-    account_id: i64,
+    account_id: u16,
     skin_base64: String,
     variant: String,
 ) -> Result<serde_json::Value, String> {
@@ -851,7 +848,7 @@ pub async fn ms_change_skin(
     // 5) 成功后重新拉 profile（拿到新的 ACTIVE 皮肤地址）并刷新皮肤缓存
     let profile = fetch_minecraft_profile(&mc_token).await?;
     if let Some((skin_url, slim)) = profile.active_skin() {
-        skin_manager::cache_microsoft_skin(&app, &profile.id, skin_url, slim).await;
+        skin_manager::cache_microsoft_skin(&profile.id, skin_url, slim).await;
     }
     Ok(profile_to_json(&profile, &uuid))
 }
@@ -861,7 +858,7 @@ pub async fn ms_change_skin(
 #[tauri::command]
 pub async fn ms_change_cape(
     db: State<'_, Db>,
-    account_id: i64,
+    account_id: u16,
     cape_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let uuid = {
@@ -919,7 +916,7 @@ pub async fn ms_change_cape(
 /// 删除账号：accounts 行 + keyring 凭据（微软账号）+ 皮肤缓存目录。
 /// DB 删除成功即视为成功；keyring / 皮肤目录清理失败只打 stderr（best effort）。
 #[tauri::command]
-pub fn delete_account(app: AppHandle, db: State<'_, Db>, account_id: i64) -> Result<(), String> {
+pub fn delete_account(db: State<'_, Db>, account_id: u16) -> Result<(), String> {
     let (uuid, msa_id, account_type) = {
         let conn = db.lock()?;
         let row = conn
@@ -957,9 +954,9 @@ pub fn delete_account(app: AppHandle, db: State<'_, Db>, account_id: i64) -> Res
         }
     }
 
-    // 对应类型的皮肤缓存目录
+    // 对应类型的皮肤缓存目录（与 skin_manager 写入的目录一致）
     let kind = if account_type == 0 { "microsoft" } else { "offline" };
-    match app.path().app_local_data_dir() {
+    match crate::db_handler::data_root() {
         Ok(root) => {
             let dir = root.join("skin").join(kind).join(&uuid);
             match std::fs::remove_dir_all(&dir) {

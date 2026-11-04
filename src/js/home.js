@@ -11,8 +11,15 @@ import {
     escapeHtml,
     invokeFn,
     listenFn,
-    MAX_PLAYER_NAME,
 } from './main.js';
+
+import fabricImg from '../assets/fabric.png';
+import neoforgeImg from '../assets/neoforge.png';
+import forgeImg from '../assets/anvil.png';
+import releaseImg from '../assets/grass_block.png';
+import snapshotImg from '../assets/dirt.png';
+import oldImg from '../assets/cobblestone.png';
+import musicDiscImg from '../assets/music_disc_11.png';
 
 // 1×1 transparent GIF placeholder (real skin fetching is not implemented yet).
 const TRANSPARENT_GIF =
@@ -935,6 +942,90 @@ function setupRemoveAccount() {
     });
 }
 
+// ── Start Minecraft Menu ──────────────────────────────────────────────
+// 启动版本下拉框：get_local_versions 填充 md-select-option；图标优先按
+// loader（fabric/forge/neoforge），原版按 type（release/snapshot/old_*），
+// 未知类型回退唱片图标。注意：后端 MinecraftVersion 的 JSON 键是 "type"
+// （serde rename），不是 version_type。
+const verIcon = [null, fabricImg, forgeImg, neoforgeImg];   // 下标 = loader
+const verIcon2 = [releaseImg, snapshotImg, oldImg, oldImg]; // 下标 = type 0-3
+
+function versionIcon(ver) {
+    return verIcon[ver.loader] || verIcon2[ver.type] || musicDiscImg;
+}
+
+async function setupLaunchMenu() {
+    const LaunchVerSelect = document.getElementById('launch-ver-select');
+    const LaunchBtn = document.getElementById('launch-btn');
+    if (!LaunchVerSelect || !LaunchBtn) {
+        return;
+    }
+
+    let LocalVersions = [];
+    try {
+        LocalVersions = await invokeFn('get_local_versions');
+    } catch (error) {
+        console.error('Failed to load local versions', error);
+    }
+
+    // 一次性写入，避免逐条 += 反复重解析。
+    LaunchVerSelect.innerHTML = LocalVersions.map((ver) => `
+        <md-select-option value="${escapeHtml(ver.name)}">
+            <img slot="start" src="${versionIcon(ver)}" class="icon" alt="" />
+            <span slot="headline">${escapeHtml(ver.name)}</span>
+        </md-select-option>
+    `).join('');
+
+    // select 字段左侧显示当前选中版本的图标（md-select 原生支持
+    // slot="leading-icon"；关闭状态的字段不会渲染选项里的 slot="start"
+    // 图标，所以图标要单独同步，选项打开后由菜单自身渲染）。
+    const LaunchVerIcon = document.createElement('img');
+    LaunchVerIcon.slot = 'leading-icon';
+    LaunchVerIcon.alt = '';
+    LaunchVerIcon.hidden = true;
+    LaunchVerSelect.appendChild(LaunchVerIcon);
+    const syncLaunchIcon = () => {
+        const cur = LocalVersions.find((ver) => ver.name === LaunchVerSelect.value);
+        LaunchVerIcon.hidden = !cur;
+        if (cur) {
+            LaunchVerIcon.src = versionIcon(cur);
+        }
+    };
+
+    // 默认选中第一个版本；没有任何版本时禁用 Start。
+    // 注意：md-select 关闭态字段的文本来自 displayText，而选项的 displayText
+    // 是实时查询 headline slot 得到的。选项刚写入 DOM 时还没完成首次渲染
+    // (renderRoot 为 undefined，查询返回空数组)，此时立即赋值 value 会把
+    // displayText 固定为空 —— 图标正常但字段不显示版本名。所以必须先等
+    // 所有选项渲染完成，再赋值并校验。
+    const options = [...LaunchVerSelect.querySelectorAll('md-select-option')];
+    await Promise.all(options.map((opt) => opt.updateComplete));
+    const first = LocalVersions[0]?.name ?? null;
+    if (first) {
+        LaunchVerSelect.value = first;
+        await LaunchVerSelect.updateComplete;
+        if (LaunchVerSelect.value !== first || !LaunchVerSelect.displayText) {
+            // 兜底：重设 value 重新走 selectItem → updateValueAndDisplayText，
+            // displayText 此时会实时读到已渲染的 headline 文本。
+            LaunchVerSelect.value = first;
+            await LaunchVerSelect.updateComplete;
+        }
+    }
+    LaunchBtn.disabled = !first;
+    syncLaunchIcon();
+
+    LaunchVerSelect.addEventListener('change', () => {
+        LaunchBtn.disabled = !LaunchVerSelect.value;
+        syncLaunchIcon();
+    });
+
+    // TODO: 启动逻辑待后端提供 launch 命令后接入。
+    LaunchBtn.addEventListener('click', () => {
+        if (LaunchVerSelect.value) {
+            console.warn('launch command not implemented yet:', LaunchVerSelect.value);
+        }
+    });
+}
 // ── Init ──────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -945,5 +1036,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupAddAccountDialog();
     setupRemoveAccount();
     setupSkinCapeControls();
+    void setupLaunchMenu();
     await refreshAccounts();
 });

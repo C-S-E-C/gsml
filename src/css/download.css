@@ -1,48 +1,232 @@
-/* ── Download page (installed versions) styles ── */
+/* ── Download page styles ─────────────────────────────────────────────
+   视图 1：远程版本列表（搜索 + 类型筛选，一次性全部加载）
+   视图 2：详情（loader 选择 + 自定义名 + 安装进度）
+   视图 3：已安装版本网格（沿用 .version 卡片） */
 
-ul {
-  list-style-type: none;
-  display: grid;
-  gap: 2rem;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+.dl-page {
+    height: 100vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 20px 28px 48px;
+}
+
+.dl-page h1 {
+    font-size: 1.8rem;
+    margin: 0 0 16px;
+}
+
+.dl-page h2 {
+    font-size: 1.3rem;
+    margin: 0 0 8px;
+}
+
+.dl-page section {
+    max-width: 860px;
+}
+
+/* 滚动条（与 home 页一致） */
+.dl-page::-webkit-scrollbar {
+    width: 10px;
+}
+
+.dl-page::-webkit-scrollbar-thumb {
+    background: var(--md-sys-color-outline-variant);
+    border-radius: 5px;
+}
+
+.dl-page::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* ── 工具栏：搜索 + 类型筛选 ── */
+.dl-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 560px;
+    margin-bottom: 16px;
+}
+
+.dl-toolbar md-outlined-text-field {
+    flex: 1;
+}
+
+/* ── 加载中（loading.webp gif） ── */
+.dl-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 48px 0;
+}
+
+.dl-loading[hidden] {
+    display: none;
+}
+
+.dl-loading img {
+    width: 85px;
+    height: 85px;
+    transform: rotate(45deg);
+}
+
+/* ── 远程版本网格 ── */
+#dl-remote-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.dl-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--md-sys-color-surface-container);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.15s, background-color 0.15s;
+}
+
+.dl-card:hover {
+    background: var(--md-sys-color-surface-container-highest);
+    transform: scale(1.03);
+}
+
+.dl-card img {
+    width: 28px;
+    height: 28px;
+    flex: none;
+    image-rendering: pixelated;
+    border-radius: 5px;
+}
+
+.dl-card-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.dl-card-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dl-card-type {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.dl-more {
+    margin-top: 16px;
+}
+
+/* ── 详情视图 ── */
+#dl-back-btn {
+    margin-bottom: 4px;
+}
+
+.dl-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 460px;
+}
+
+.dl-form md-filled-select,
+.dl-form md-outlined-text-field {
+    width: 100%;
+}
+
+/* select 关闭态前导图标 + 菜单内选项图标 */
+.dl-form img[slot="leading-icon"],
+.dl-form img[slot="start"] {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    object-fit: contain;
+}
+
+.dl-hint {
+    margin: 0;
+}
+
+.pill-row {
+    display: flex;
+    gap: 10px;
+}
+
+.dl-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dl-progress md-linear-progress {
+    width: 100%;
+}
+
+.dl-progress p {
+    margin: 0;
+}
+
+.dl-error {
+    color: var(--md-error-tonal-button-label-text-color);
+    margin: 0;
+    min-height: 1.2em;
+}
+
+/* ── 已安装版本网格 ── */
+#version-list {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
 }
 
 .version {
-  width: 130px;
-  background-color: var(--md-sys-color-surface-container);
-  height: 130px;
-  border-radius: 15px;
-  color: var(--md-sys-color-on-surface);
-  text-align: center;
-  padding-top: 5px;
-  margin-bottom: 5px;
-  justify-content: center;
-  transform: scale(1);
-  transition: transform 0.2s;
-  cursor: pointer;
-}
-
-.version.selected {
-  outline: 2px solid var(--md-sys-color-primary);
+    background: var(--md-sys-color-surface-container);
+    border-radius: 12px;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+    min-height: 120px;
 }
 
 .version:hover {
-  transform: scale(1.1);
-  transition: transform 0.2s;
+    background: var(--md-sys-color-surface-container-highest);
+    transform: scale(1.03);
 }
 
 .version img {
-  margin-top: 5px;
-  width: 40px;
-  height: 40px;
-  position: relative;
+    width: 40px;
+    height: 40px;
+    image-rendering: pixelated;
+    margin-bottom: 6px;
 }
 
 .version h3 {
-  line-height: 20px;
-  position: relative;
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    word-break: break-word;
 }
 
-img{
-  image-rendering: pixelated;
+.version p {
+    margin: 0;
+    font-size: 0.75rem;
+}
+
+#dl-installed-empty {
+    margin-top: 12px;
 }

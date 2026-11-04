@@ -7,12 +7,82 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script type="module" src="./src/js/m3.js"></script>
   </head>
-  <body style="overflow-x: hidden;">
+  <body style="overflow: hidden;">
     <script type="module" src="./src/js/versions.js"></script>
-    <p>老子才不管疯子举不举报，举报照样下</p>
-    <h1>Installed</h1>
-    <p class="muted">Click a version to select it for starting from Home.</p>
-    <hr  />
-    <ul id="version-list"></ul>
+    <main class="dl-page">
+      <!-- 视图 1：远程版本列表（可搜索 + 类型筛选，一次性全部加载） -->
+      <section id="dl-browser">
+        <h1>Download</h1>
+        <div class="dl-toolbar">
+          <md-outlined-text-field
+            id="dl-search"
+            type="search"
+            label="Search"
+            placeholder="Filter by name"
+            autocomplete="off"></md-outlined-text-field>
+          <md-filled-tonal-button id="dl-filter-btn">
+            <md-icon slot="icon">filter_list</md-icon>
+            <span id="dl-filter-label">All versions</span>
+          </md-filled-tonal-button>
+        </div>
+        <md-menu id="dl-filter-menu" anchor="dl-filter-btn" positioning="fixed">
+          <md-menu-item data-filter="all"><span slot="headline">All versions</span></md-menu-item>
+          <md-menu-item data-filter="release"><span slot="headline">Release</span></md-menu-item>
+          <md-menu-item data-filter="snapshot"><span slot="headline">Snapshot</span></md-menu-item>
+          <md-menu-item data-filter="old"><span slot="headline">Old alpha / beta</span></md-menu-item>
+        </md-menu>
+        <div class="dl-loading" id="dl-loading" hidden>
+          <img src="./src/assets/loading.webp" alt="" />
+          <span class="muted">Loading versions…</span>
+        </div>
+        <ul id="dl-remote-list"></ul>
+        <div class="dl-more">
+          <p class="muted" id="dl-remote-empty" hidden>No versions match.</p>
+        </div>
+      </section>
+
+      <!-- 视图 2：选中版本 → 选择 loader + 自定义名字 + 安装 -->
+      <section id="dl-detail" hidden>
+        <md-text-button id="dl-back-btn">
+          <md-icon slot="icon">arrow_back</md-icon>Back
+        </md-text-button>
+        <h2 id="dl-detail-title"></h2>
+        <div class="dl-form">
+          <md-filled-select id="dl-loader-select" label="Loader" menu-position="fixed">
+            <md-select-option value="0"><span slot="headline">Vanilla</span></md-select-option>
+            <md-select-option value="1"><span slot="headline">Fabric</span></md-select-option>
+            <md-select-option value="2"><span slot="headline">Forge</span></md-select-option>
+            <md-select-option value="3"><span slot="headline">NeoForge</span></md-select-option>
+          </md-filled-select>
+          <md-filled-select
+            id="dl-loader-version-select"
+            label="Loader version"
+            menu-position="fixed"
+            hidden></md-filled-select>
+          <p class="muted dl-hint" id="dl-loader-hint" hidden></p>
+          <md-outlined-text-field
+            id="dl-custom-name"
+            label="Instance name"
+            supporting-text="Defaults to the version name"></md-outlined-text-field>
+          <div class="pill-row">
+            <md-filled-button id="dl-install-btn">Install</md-filled-button>
+            <md-filled-tonal-button id="dl-cancel-btn" hidden>Cancel</md-filled-tonal-button>
+          </div>
+          <div class="dl-progress" id="dl-progress" hidden>
+            <md-linear-progress id="dl-progress-bar" value="0"></md-linear-progress>
+            <p class="muted" id="dl-progress-label"></p>
+          </div>
+          <p class="dl-error" id="dl-error" role="alert"></p>
+        </div>
+      </section>
+
+      <!-- 已安装版本（Home 页可直接选中启动） -->
+      <!-- <section id="dl-installed">
+        <h2>Installed</h2>
+        <p class="muted">Versions installed here are selectable on the Home page.</p>
+        <ul id="version-list"></ul>
+        <p class="muted" id="dl-installed-empty" hidden>No versions installed yet.</p>
+      </section> -->
+    </main>
   </body>
 </html>

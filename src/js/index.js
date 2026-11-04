@@ -2,7 +2,7 @@
 // index.html loads this module. It owns the top app bar (tabs, brand,
 // window controls), the logo easter egg and the root-page bootstrap.
 
-import { isRootPage, ensureLauncherState, refreshInstalledVersions } from './main.js';
+import { isRootPage,invokeFn } from './main.js';
 import logoImg from '../assets/logo.png';
 
 const thesquidsays = [
@@ -58,16 +58,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     setupWindowControls();
-
-    if (!localStorage.getItem("StartTimes")) {
+    // StartTimes now lives in simpleValues (JSON). null = license not agreed yet.
+    // NOTE: 0 is a valid value ("agreed, zero launches"), so only null redirects.
+    var st = await invokeFn("get_svar", { key: "StartTimes" });
+    if (st == null) {
         location.pathname = '/user_license.html';
         return;
     }
-
-    await ensureLauncherState();
-    await refreshInstalledVersions();
-    localStorage.setItem("StartTimes", Number(localStorage.getItem("StartTimes")) + 1);
-    sidebar_button('home', document.querySelector('.sidebar button'));
+    // value is now any JSON type; Number() normalizes legacy string archives.
+    await invokeFn("set_svar", { key: "StartTimes", value: (Number(st) || 0) + 1 });
+    sidebar_button('home');
     document.getElementById("main").addEventListener('contextmenu', event => event.preventDefault());
 });
 

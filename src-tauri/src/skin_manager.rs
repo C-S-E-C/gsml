@@ -1,7 +1,7 @@
 // skin_manager.rs — 皮肤渲染与磁盘缓存
 //
-// 目录结构（app_local_data_dir 下，与 app.db 同级；Windows 上即
-// %LOCALAPPDATA%\top.syntropica.apps.glowSquidMinecraftLauncher\skin\）：
+// 目录结构（data_root() 下，与 app.db 同级；Windows 上即
+// %LOCALAPPDATA%\Syntropica\GlowSquidMinecraftLauncher\skin\）：
 //   skin/microsoft/<uuid>/head.png    8×8    头像（脸 + 帽子层叠加）
 //   skin/microsoft/<uuid>/body.png    16×32  正面全身像
 //   skin/offline/<uuid>/head.png / body.png   同上
@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use image::{ImageFormat, Rgba, RgbaImage};
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::State;
 
 use crate::db_handler::Db;
 
@@ -40,18 +40,14 @@ pub struct SkinData {
 
 // ── 目录与编码 ───────────────────────────────────────────────────────────
 
-fn skin_root(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| format!("获取应用数据目录失败: {e}"))?;
-    Ok(dir.join("skin"))
+fn skin_root() -> Result<PathBuf, String> {
+    Ok(crate::db_handler::data_root()?.join("skin"))
 }
 
 /// 某类账号的皮肤缓存目录：skin/{microsoft|offline}/<uuid>/
-fn kind_dir(app: &AppHandle, account_type: i64, uuid: &str) -> Result<PathBuf, String> {
+fn kind_dir(account_type: i64, uuid: &str) -> Result<PathBuf, String> {
     let kind = if account_type == 0 { "microsoft" } else { "offline" };
-    Ok(skin_root(app)?.join(kind).join(uuid))
+    Ok(skin_root()?.join(kind).join(uuid))
 }
 
 fn encode_png(img: &RgbaImage) -> Result<Vec<u8>, String> {
@@ -165,8 +161,8 @@ fn default_body() -> RgbaImage {
 }
 
 /// 确保 skin/default.{head,body}.png 存在，返回 skin 根目录
-fn ensure_default_skin(app: &AppHandle) -> Result<PathBuf, String> {
-    let root = skin_root(app)?;
+fn ensure_default_skin() -> Result<PathBuf, String> {
+    let root = skin_root()?;
     std::fs::create_dir_all(&root).map_err(|e| format!("创建 skin 目录失败: {e}"))?;
     let head_path = root.join("default.head.png");
     let body_path = root.join("default.body.png");
@@ -335,21 +331,20 @@ async fn resolve_offline_skin(name: &str) -> Option<(Vec<u8>, bool)> {
 
 /// 微软登录成功后调用：下载 profile 里的 ACTIVE 皮肤并渲染进缓存。
 /// best effort —— 失败只打 stderr，不影响登录结果。
-pub async fn cache_microsoft_skin(app: &AppHandle, uuid: &str, skin_url: &str, slim: bool) {
-    if let Err(err) = cache_microsoft_skin_inner(app, uuid, skin_url, slim).await {
+pub async fn cache_microsoft_skin(uuid: &str, skin_url: &str, slim: bool) {
+    if let Err(err) = cache_microsoft_skin_inner(uuid, skin_url, slim).await {
         eprintln!("[skin] 缓存微软账号 {uuid} 皮肤失败: {err}");
     }
 }
 
 async fn cache_microsoft_skin_inner(
-    app: &AppHandle,
     uuid: &str,
     skin_url: &str,
     slim: bool,
 ) -> Result<(), String> {
     let png = http_bytes(skin_url).await?;
     let (head, body) = render_skin_bytes(&png, slim)?;
-    let dir = kind_dir(app, 0, uuid)?;
+    let dir = kind_dir(0, uuid)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建皮肤目录失败: {e}"))?;
     std::fs::write(dir.join("head.png"), head).map_err(|e| format!("写入 head.png 失败: {e}"))?;
     std::fs::write(dir.join("body.png"), body).map_err(|e| format!("写入 body.png 失败: {e}"))?;
@@ -363,11 +358,10 @@ async fn cache_microsoft_skin_inner(
 /// 全部失败时回退内置默认皮肤。
 #[tauri::command]
 pub async fn get_account_skin(
-    app: AppHandle,
     db: State<'_, Db>,
-    account_id: i64,
+    account_id: u16,
 ) -> Result<SkinData, String> {
-    let root = ensure_default_skin(&app)?;
+    let root = ensure_default_skin()?;
 
     // 1) 查账号（uuid / name / account_type）；数据库锁只在同步段内持有
     let (uuid, name, account_type) = {
@@ -380,7 +374,7 @@ pub async fn get_account_skin(
         .map_err(|_| format!("账号不存在 (id={account_id})"))?
     };
 
-    let dir = kind_dir(&app, account_type, &uuid)?;
+    let dir = kind_dir(account_type, &uuid)?;
     let head_path = dir.join("head.png");
     let body_path = dir.join("body.png");
 
@@ -421,7 +415,7 @@ pub async fn get_account_skin(
             .ok()
         };
         if let Some(ms_uuid) = reuse {
-            if let Ok(src) = kind_dir(&app, 0, &ms_uuid) {
+            if let Ok(src) = kind_dir(0, &ms_uuid) {
                 if let (Ok(head), Ok(body)) = (
                     std::fs::read(src.join("head.png")),
                     std::fs::read(src.join("body.png")),
@@ -454,11 +448,10 @@ pub async fn get_account_skin(
 
 // ── 披风材质 ────────────────────────────────────────────────────────────
 // 披风选择 pill 的展示图：下载 64×32 完整披风材质，裁出正面披风区
-// (x=1, y=1, 10×16)，按别名缓存到 appdata/capes/{name}.png
+// (x=1, y=1, 10×16)，按别名缓存到 data_root()/capes/{name}.png
 // （别名小写 + 空格换下划线，如 "Aurora" → aurora.png），返回 base64 data URL。
 #[tauri::command]
 pub async fn get_cape_texture(
-    app: AppHandle,
     url: String,
     alias: String,
 ) -> Result<String, String> {
@@ -478,11 +471,7 @@ pub async fn get_cape_texture(
         .collect();
     let safe = if safe.is_empty() { "cape".to_string() } else { safe };
 
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| format!("获取应用数据目录失败: {e}"))?
-        .join("capes");
+    let dir = crate::db_handler::data_root()?.join("capes");
     let path = dir.join(format!("{safe}.png"));
     if let Ok(cached) = std::fs::read(&path) {
         return Ok(format!("data:image/png;base64,{}", b64(&cached)));

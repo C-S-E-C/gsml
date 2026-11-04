@@ -5,6 +5,7 @@ mod account_manager;
 mod db_handler;
 mod deeplink_handler;
 mod skin_manager;
+mod minecraft_manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,9 +20,10 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // 1) 数据库
-            let database = db_handler::init(app.handle())?; // 注意不是 &app.handle()
+            let database = db_handler::init()?; // 注意不是 &app.handle()
             app.manage(database);
 
             // 2) Deeplink
@@ -32,7 +34,6 @@ pub fn run() {
             //    安装版（NSIS/MSI）由安装器注册，这里重复调用幂等。
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             app.deep_link().register_all()?;
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -45,6 +46,12 @@ pub fn run() {
             account_manager::ms_change_cape,
             skin_manager::get_account_skin,
             skin_manager::get_cape_texture,
+            db_handler::get_svar,
+            db_handler::set_svar,
+            minecraft_manager::get_local_versions,
+            minecraft_manager::list_remote_versions,
+            minecraft_manager::install_version,
+            minecraft_manager::cancel_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

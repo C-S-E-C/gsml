@@ -13,6 +13,7 @@
         display: block;
         width: 100%;
         overflow: hidden;
+        -webkit-app-region: drag;
       }
       #logo {
         margin-top: 35px;
@@ -38,7 +39,7 @@
     <h2>Glow Squid Minecraft Launcher</h2>
     <h3>Welcome to GSML, Please read and agree to the <a href="https://example.com">lisence</a> to start using GSML</h3>
     <p>Tip: click on lisence to view it</p>
-    <md-filled-tonal-button onclick="localStorage.setItem('StartTimes',0);location.pathname='/';">I agree.</md-filled-tonal-button>
+    <md-filled-tonal-button onclick="window.__TAURI__.core.invoke('set_svar',{key:'StartTimes',value:0}).then(() => { location.pathname = '/'; });">I agree.</md-filled-tonal-button>
     <md-outlined-button onclick="document.getElementById('alert').style.display='block'">I don't agree.</md-outlined-button>
     <p style="color: red;display: none;" id="alert">You must agree to the lisence to use GSML</p>
   </body>
