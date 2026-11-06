@@ -7,6 +7,7 @@ import { isPage } from './main.js';
 
 const VIEWS = [
     { key: 'about' },
+    { key: 'update' },
     // Add future settings categories here, e.g. { key: 'general' }.
 ];
 

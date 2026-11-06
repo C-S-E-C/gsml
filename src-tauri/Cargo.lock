@@ -1620,6 +1620,7 @@ dependencies = [
  "log",
  "md-5",
  "rand",
+ "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",

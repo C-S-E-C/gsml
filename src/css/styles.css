@@ -35,6 +35,10 @@
   opacity: 0.75;
 }
 
+img {
+  -webkit-user-drag: none;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --md-sys-color-background: #0f1416;

@@ -196,6 +196,29 @@ body {
   text-decoration: underline;
 }
 
+/* ── Update panel ─────────────────────────────────────────── */
+.update-card {
+  padding: 32px 28px;
+  border-radius: 20px;
+  background-color: var(--md-sys-color-surface-container);
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.update-title {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.update-description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+}
+
 /* ── Legacy settings form rows (kept for future panels) ───── */
 .panel {
   width: min(620px, calc(100% - 48px));

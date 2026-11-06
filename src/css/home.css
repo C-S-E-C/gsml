@@ -111,6 +111,8 @@ body {
     flex-shrink: 0;
     image-rendering: pixelated;
     filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+    /* position: sticky;
+    top: 20px; */
 }
 
 /* Account details */

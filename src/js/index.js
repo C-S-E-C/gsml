@@ -94,7 +94,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // value is now any JSON type; Number() normalizes legacy string archives.
     await invokeFn("set_svar", { key: "StartTimes", value: (Number(st) || 0) + 1 });
     sidebar_button('home');
-    document.getElementById("main").addEventListener('contextmenu', event => event.preventDefault());
 });
 
 // ── Global bridge ────────────────────────────────────────────────────

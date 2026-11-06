@@ -55,3 +55,4 @@ export function escapeHtml(text) {
     }[c]));
 }
 
+// document.addEventListener('contextmenu', event => event.preventDefault());

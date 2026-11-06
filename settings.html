@@ -12,9 +12,13 @@
     <div class="settings-sidebar">
       <div class="settings-caption">Settings</div>
       <md-list id="settings-nav" class="settings-nav">
-        <md-list-item class="about-item selected" data-view="about" onclick="switchSettingsView('about')">
+        <md-list-item class="selected" data-view="about" onclick="switchSettingsView('about')">
           <md-icon slot="start">info</md-icon>
           <span slot="headline">About</span>
+        </md-list-item>
+        <md-list-item data-view="update" onclick="switchSettingsView('update')">
+          <md-icon slot="start">update</md-icon>
+          <span slot="headline">Update</span>
         </md-list-item>
       </md-list>
     </div>
@@ -26,7 +30,6 @@
           <img class="about-logo" src="./src/assets/logo.png" alt="Glow Squid Logo" />
           <h1 class="about-title">Glow Squid Minecraft Launcher</h1>
           <div class="about-subtitle">A Minecraft launcher built with modern UI</div>
-          <div class="about-version">Version 0.7.0 <span class="muted">(channel: ALPHA)</span></div>
 
           <div class="about-divider"></div>
 
@@ -34,6 +37,13 @@
           <p class="about-note">
             <a class="lib-link" href="./THIRD_PARTY_LICENSES.html">View all third-party licenses</a>
           </p>
+        </div>
+      </section>
+      <!-- ── Update panel ── -->
+      <section id="view-update" class="view-panel" data-view="update" hidden>
+        <div class="update-card">
+          <h2 class="update-title">Update Settings</h2>
+          <p class="update-description">Manage your update preferences and check for new versions.</p>
         </div>
       </section>
     </main>

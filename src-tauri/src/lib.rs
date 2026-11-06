@@ -6,6 +6,7 @@ mod db_handler;
 mod deeplink_handler;
 mod skin_manager;
 mod minecraft_manager;
+mod identification_code;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -52,6 +53,7 @@ pub fn run() {
             minecraft_manager::list_remote_versions,
             minecraft_manager::install_version,
             minecraft_manager::cancel_install,
+            identification_code::get_id_code,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
