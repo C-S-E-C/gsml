@@ -48,21 +48,24 @@ jobs:
           case "$PLATFORM" in
             windows)
               REQUIRED=(
-                "gsml.exe"
-                "gsml_${VERSION}_x64-setup.exe"
-                "gsml_${VERSION}_x64_en-US.msi"
+                "^gsml\.exe$"
+                "gsml_${VERSION}.*-setup\.exe$"
+                "gsml_${VERSION}.*\.msi$"
               )
               ;;
             mac)
               REQUIRED=(
-                "gsml_${VERSION}_x64.dmg"
-                "gsml_${VERSION}_aarch64.dmg"
+                "${VERSION}.*(x64|x86_64).*\.dmg$"
+                "${VERSION}.*(aarch64|arm64).*\.dmg$"
+                "aarch64.*\.app\.zip$"
+                "x64.*\.app\.zip$"
               )
               ;;
             linux)
               REQUIRED=(
-                "gsml_${VERSION}_amd64.AppImage"
-                "gsml_${VERSION}_amd64.deb"
+                "gsml_${VERSION}.*\.AppImage$"
+                "gsml_${VERSION}.*\.deb$"
+                "${VERSION}.*\.rpm$"
               )
               ;;
             *)
@@ -72,7 +75,8 @@ jobs:
 
           MISSING=()
           for pat in "${REQUIRED[@]}"; do
-            if ! grep -qxF "$pat" <<< "$ASSETS"; then
+            # 宽松正则匹配：兼容 .app.dmg 后缀、rpm 连字符命名等差异
+            if ! grep -qE "$pat" <<< "$ASSETS"; then
               MISSING+=("$pat")
             fi
           done
@@ -147,6 +151,10 @@ jobs:
         if: steps.check.outputs.need_build == 'true'
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Add mac x86_64 target
+        if: steps.check.outputs.need_build == 'true' && matrix.platform == 'mac'
+        run: rustup target add x86_64-apple-darwin
+
       - name: Install Linux deps
         if: steps.check.outputs.need_build == 'true' && matrix.platform == 'linux'
         run: |
@@ -182,13 +190,34 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install cargo-about
         uses: taiki-e/install-action@cargo-about
+      # 显式指定 bundle 目标，保证产物齐全：linux=AppImage/deb/rpm，windows=msi/nsis，mac=app/dmg
       - name: Build (release)
         if: steps.check.outputs.need_build == 'true' && !github.event.release.prerelease
-        run: pnpm tauri build
+        shell: bash
+        run: |
+          case "${{ matrix.platform }}" in
+            linux)   pnpm tauri build --bundles appimage,deb,rpm ;;
+            windows) pnpm tauri build --bundles msi,nsis ;;
+            mac)     pnpm tauri build --bundles app,dmg ;;
+          esac
 
       - name: Build (debug)
         if: steps.check.outputs.need_build == 'true' && github.event.release.prerelease
-        run: pnpm tauri build --debug
+        shell: bash
+        run: |
+          case "${{ matrix.platform }}" in
+            linux)   pnpm tauri build --bundles appimage,deb,rpm --debug ;;
+            windows) pnpm tauri build --bundles msi,nsis --debug ;;
+            mac)     pnpm tauri build --bundles app,dmg --debug ;;
+          esac
+
+      - name: Build mac x64 (release)
+        if: steps.check.outputs.need_build == 'true' && matrix.platform == 'mac' && !github.event.release.prerelease
+        run: pnpm tauri build --target x86_64-apple-darwin --bundles app,dmg
+
+      - name: Build mac x64 (debug)
+        if: steps.check.outputs.need_build == 'true' && matrix.platform == 'mac' && github.event.release.prerelease
+        run: pnpm tauri build --target x86_64-apple-darwin --bundles app,dmg --debug
 
       - name: Collect artifacts
         if: steps.check.outputs.need_build == 'true'
@@ -196,17 +225,60 @@ jobs:
         run: |
           set -e
           PLATFORM="${{ matrix.platform }}"
-          if [ "${{ github.event.release.prerelease }}" = "true" ]; then SRC="src-tauri/target/debug"; else SRC="src-tauri/target/release"; fi
           OUT="dist/$PLATFORM"; mkdir -p "$OUT"
-          [ -d "$SRC/bundle" ] && cp -r "$SRC/bundle/." "$OUT/"
-          if [ "$PLATFORM" = "mac" ]; then
-            find "$OUT" -maxdepth 3 -type d -name "*.app" | while read -r appdir; do
-              parent=$(dirname "$appdir"); base=$(basename "$appdir")
-              ( cd "$parent" && ditto -c -k --sequesterRsrc --keepParent "$base" "$base.zip" )
-              rm -rf "$appdir"
-            done
+
+          # 逐个 bundle 目录收集（含 debug、mac 跨编译 target/x86_64-apple-darwin/...）
+          while IFS= read -r B; do
+            if [ "$PLATFORM" = "mac" ]; then
+              case "$B" in
+                *x86_64-apple-darwin*) TAG="_x64" ;;
+                *aarch64-apple-darwin*) TAG="_aarch64" ;;
+                *) case "$(uname -m)" in x86_64) TAG="_x64" ;; *) TAG="_aarch64" ;; esac ;;
+              esac
+              # .app 目录不能直接作为 release asset：按架构打成 zip
+              find "$B" -maxdepth 3 -type d -name "*.app" | while read -r appdir; do
+                parent=$(dirname "$appdir"); base=$(basename "$appdir")
+                ( cd "$parent" && ditto -c -k --sequesterRsrc --keepParent "$base" "$OUT/${base%.app}${TAG}.app.zip" )
+              done
+              find "$B" -maxdepth 3 -type f -name "*.dmg" | while read -r dmg; do
+                base=$(basename "$dmg")
+                if [ -e "$OUT/$base" ]; then base="${base%.dmg}${TAG}.dmg"; fi
+                cp "$dmg" "$OUT/$base"
+              done
+            else
+              cp -r "$B/." "$OUT/"
+            fi
+          done < <(find src-tauri/target -maxdepth 3 -type d -name bundle | sort)
+
+          # Windows portable exe（裸二进制也上传）
+          if [ "$PLATFORM" = "windows" ]; then
+            if [ -f src-tauri/target/debug/gsml.exe ]; then
+              cp src-tauri/target/debug/gsml.exe "$OUT/"
+            else
+              cp src-tauri/target/release/gsml.exe "$OUT/"
+            fi
           fi
+
           find "$OUT" -type f | sort || true
+
+      - name: Upload release assets
+        if: steps.check.outputs.need_build == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          D="dist/${{ matrix.platform }}"
+          COUNT=$(find "$D" -type f | wc -l)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No build outputs to upload for ${{ matrix.platform }}"
+            exit 1
+          fi
+          echo "Uploading $COUNT file(s) to release $TAG:"
+          find "$D" -type f -print
+          find "$D" -type f -print0 | xargs -0 gh release upload "$TAG" --clobber
+          echo "::notice::Uploaded $COUNT file(s) to release $TAG"
 
       - name: Upload workflow artifact
         if: steps.check.outputs.need_build == 'true'
