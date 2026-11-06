@@ -1,0 +1,217 @@
+name: build
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runs-on: ubuntu-latest
+          - platform: mac
+            runs-on: macos-latest
+          - platform: windows
+            runs-on: windows-latest
+
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # ===== 新增：检查 release 是否已有该平台全部产物 =====
+      - name: Check existing release assets
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+
+          if ! ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null); then
+            echo "::warning::Cannot read release $TAG, assume need build"
+            echo "need_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="${TAG#v}"; VERSION="${VERSION#V}"
+
+          case "$PLATFORM" in
+            windows)
+              REQUIRED=(
+                "gsml.exe"
+                "gsml_${VERSION}_x64-setup.exe"
+                "gsml_${VERSION}_x64_en-US.msi"
+              )
+              ;;
+            mac)
+              REQUIRED=(
+                "gsml_${VERSION}_x64.dmg"
+                "gsml_${VERSION}_aarch64.dmg"
+              )
+              ;;
+            linux)
+              REQUIRED=(
+                "gsml_${VERSION}_amd64.AppImage"
+                "gsml_${VERSION}_amd64.deb"
+              )
+              ;;
+            *)
+              REQUIRED=()
+              ;;
+          esac
+
+          MISSING=()
+          for pat in "${REQUIRED[@]}"; do
+            if ! grep -qxF "$pat" <<< "$ASSETS"; then
+              MISSING+=("$pat")
+            fi
+          done
+
+          if [ ${#MISSING[@]} -eq 0 ]; then
+            echo "::notice::All required assets exist for $PLATFORM, skip build."
+            echo "need_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Missing assets for $PLATFORM:"
+            printf '  - %s\n' "${MISSING[@]}"
+            echo "need_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ===== 同步版本号 =====
+      - name: Sync version from release tag
+        if: steps.check.outputs.need_build == 'true'
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"; VERSION="${VERSION#V}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::Invalid semver: '$TAG' -> '$VERSION'"; exit 1
+          fi
+          echo "Using version: $VERSION"
+
+          node - "$VERSION" <<'EOF'
+          const fs = require('fs');
+          const version = process.argv[2];
+          for (const p of ['package.json', 'src-tauri/tauri.conf.json']) {
+            const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+            j.version = version;
+            fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+            console.log(`${p} -> ${version}`);
+          }
+          EOF
+
+          python3 - "$VERSION" <<'PY'
+          import re, sys
+          version = sys.argv[1]
+          path = 'src-tauri/Cargo.toml'
+          text = open(path, encoding='utf-8').read()
+          m = re.search(r'(?ms)^\[package\]\s*\n(.*?)(?=^\[|\Z)', text)
+          if not m:
+              sys.exit('no [package] section in Cargo.toml')
+          block = m.group(1)
+          new_block, n = re.subn(r'(?m)^version\s*=\s*"[^"]*"', f'version = "{version}"', block, count=1)
+          if n == 0:
+              new_block = f'version = "{version}"\n' + block
+          text = text[:m.start(1)] + new_block + text[m.end(1):]
+          open(path, 'w', encoding='utf-8').write(text)
+          print(f'{path} -> {version}')
+          PY
+
+          git --no-pager diff -- package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml || true
+
+      - name: Setup pnpm
+        if: steps.check.outputs.need_build == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        if: steps.check.outputs.need_build == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        if: steps.check.outputs.need_build == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux deps
+        if: steps.check.outputs.need_build == 'true' && matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Compute cache key parts
+        if: steps.check.outputs.need_build == 'true'
+        id: cachekey
+        shell: bash
+        run: |
+          RUSTC_HASH=$(rustc -vV | sha256sum | cut -c1-16)
+          # 注意：Cargo.toml 已改 version，lock 未变；lock 才是依赖指纹
+          LOCK_HASH=$(sha256sum src-tauri/Cargo.lock | cut -c1-16)
+          echo "rustc=$RUSTC_HASH" >> "$GITHUB_OUTPUT"
+          echo "lock=$LOCK_HASH"   >> "$GITHUB_OUTPUT"
+
+      - name: Cache Rust target and cargo
+        if: steps.check.outputs.need_build == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            src-tauri/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-${{ matrix.platform }}-${{ steps.cachekey.outputs.rustc }}-${{ steps.cachekey.outputs.lock }}
+          restore-keys: |
+            rust-${{ matrix.platform }}-${{ steps.cachekey.outputs.rustc }}-
+            rust-${{ matrix.platform }}-
+
+      - name: Install dependencies
+        if: steps.check.outputs.need_build == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (release)
+        if: steps.check.outputs.need_build == 'true' && !github.event.release.prerelease
+        run: pnpm tauri build
+
+      - name: Build (debug)
+        if: steps.check.outputs.need_build == 'true' && github.event.release.prerelease
+        run: pnpm tauri build --debug
+
+      - name: Collect artifacts
+        if: steps.check.outputs.need_build == 'true'
+        shell: bash
+        run: |
+          set -e
+          PLATFORM="${{ matrix.platform }}"
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then SRC="src-tauri/target/debug"; else SRC="src-tauri/target/release"; fi
+          OUT="dist/$PLATFORM"; mkdir -p "$OUT"
+          [ -d "$SRC/bundle" ] && cp -r "$SRC/bundle/." "$OUT/"
+          if [ "$PLATFORM" = "mac" ]; then
+            find "$OUT" -maxdepth 3 -type d -name "*.app" | while read -r appdir; do
+              parent=$(dirname "$appdir"); base=$(basename "$appdir")
+              ( cd "$parent" && ditto -c -k --sequesterRsrc --keepParent "$base" "$base.zip" )
+              rm -rf "$appdir"
+            done
+          fi
+          find "$OUT" -type f | sort || true
+
+      - name: Upload workflow artifact
+        if: steps.check.outputs.need_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: dist/${{ matrix.platform }}/
+          if-no-files-found: warn
+          retention-days: 7
