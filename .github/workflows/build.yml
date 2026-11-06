@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
 
+# GITHUB_TOKEN 默认只读，gh release upload 需要 contents:write
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -245,8 +249,11 @@ jobs:
                 if [ -e "$OUT/$base" ]; then base="${base%.dmg}${TAG}.dmg"; fi
                 cp "$dmg" "$OUT/$base"
               done
-            else
-              cp -r "$B/." "$OUT/"
+            elif [ "$PLATFORM" = "linux" ]; then
+              # 只取最终产物（bundle/<type>/xxx 共 2 层），排除 AppDir/deb 解包暂存目录
+              find "$B" -maxdepth 2 -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -exec cp {} "$OUT/" \;
+            elif [ "$PLATFORM" = "windows" ]; then
+              find "$B" -maxdepth 2 -type f \( -name '*.msi' -o -name '*-setup.exe' \) -exec cp {} "$OUT/" \;
             fi
           done < <(find src-tauri/target -maxdepth 3 -type d -name bundle | sort)
 
