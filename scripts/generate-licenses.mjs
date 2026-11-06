@@ -145,10 +145,14 @@ function run(cmd, args, opts = {}) {
   });
   const ok = res.status === 0;
   if (!ok) {
+    // Do NOT set process.exitCode here: callers decide whether a failure is
+    // fatal (cargo-about → step1 exits explicitly) or recoverable via
+    // fallback (pnpm licenses → scanNodeModules). Setting it here poisoned
+    // successful runs with exit code 1 on CI where `pnpm licenses list`
+    // fails but the fallback scan produced the page just fine.
     console.error(`[licenses] command failed: ${cmd} ${args.join(' ')}`);
     console.error(res.stdout ? res.stdout : '');
     console.error(res.stderr ? res.stderr : '');
-    process.exitCode = 1;
   }
   return { ok, stdout: res.stdout ?? '', stderr: res.stderr ?? '' };
 }
