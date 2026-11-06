@@ -3,7 +3,7 @@
   <h1 align="center">Glow Squid Minecraft Launcher</h1>
   <strong align="center">A Minecraft launcher built with modern UI</strong>
 </p>
-
+[![build](https://github.com/C-S-E-C/gsml/actions/workflows/build.yml/badge.svg)](https://github.com/C-S-E-C/gsml/actions/workflows/build.yml)
 ---
 
 ## Third-Party Components
