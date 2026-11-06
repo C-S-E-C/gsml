@@ -180,7 +180,8 @@ jobs:
       - name: Install dependencies
         if: steps.check.outputs.need_build == 'true'
         run: pnpm install --frozen-lockfile
-
+      - name: Install cargo-about
+        uses: taiki-e/install-action@cargo-about
       - name: Build (release)
         if: steps.check.outputs.need_build == 'true' && !github.event.release.prerelease
         run: pnpm tauri build
