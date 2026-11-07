@@ -3,6 +3,7 @@
 // window controls), the logo easter egg and the root-page bootstrap.
 
 import { isRootPage, invokeFn, listenFn } from './main.js';
+import { initAutoUpdate } from './updater.js';
 import logoImg from '../assets/logo.png';
 
 const thesquidsays = [
@@ -94,6 +95,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // value is now any JSON type; Number() normalizes legacy string archives.
     await invokeFn("set_svar", { key: "StartTimes", value: (Number(st) || 0) + 1 });
     sidebar_button('home');
+    // 启动自动检查更新：fire-and-forget，不阻塞、不强制（发现新版本
+    // 只弹可忽略的角标，用户点了才下载应用）
+    void initAutoUpdate();
 });
 
 // ── Global bridge ────────────────────────────────────────────────────

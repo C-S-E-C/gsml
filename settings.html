@@ -73,6 +73,18 @@
       </section>
     </main>
 
+    <!-- 更新确认（M3 dialog）：发现新版本时询问要不要更新，非强更 -->
+    <md-dialog id="update-confirm-dialog">
+      <div slot="headline">Update Available</div>
+      <form slot="content" id="update-confirm-form" method="dialog">
+        <p id="update-confirm-text">A new version is available. Install and restart?</p>
+      </form>
+      <div slot="actions">
+        <md-text-button form="update-confirm-form" value="later">Not Now</md-text-button>
+        <md-filled-button form="update-confirm-form" value="update">Update Now</md-filled-button>
+      </div>
+    </md-dialog>
+
     <script type="module" src="./src/js/settings.js"></script>
   </body>
 </html>

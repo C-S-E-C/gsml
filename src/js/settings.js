@@ -4,7 +4,7 @@
 // view exists for now; more views can be added to the list / #view-* panels.
 
 import { isPage,invokeFn,tauriapp,getDeviceIdentifier } from './main.js';
-import { checkForUpdates, downloadAndApply, onUpdateProgress } from './updater.js';
+import { checkForUpdates, downloadUpdate, applyDownloaded, onUpdateProgress } from './updater.js';
 
 const VIEWS = [
     { key: 'about' },
@@ -81,6 +81,19 @@ function updateStatus(text, { showProgress = false, progress = 0 } = {}) {
     }
 }
 
+/** M3 更新确认对话框：resolve(true) = 用户选择立即更新 */
+function showUpdateConfirmDialog(text) {
+    return new Promise((resolve) => {
+        const dialog = document.getElementById('update-confirm-dialog');
+        const para = document.getElementById('update-confirm-text');
+        if (!dialog || !para) { resolve(window.confirm(text)); return; }
+        // line breaks in dialog
+        para.textContent = text;
+        dialog.addEventListener('close', () => resolve(dialog.returnValue === 'update'), { once: true });
+        dialog.show();
+    });
+}
+
 async function runCheck() {
     const button = document.getElementById('check-update-button');
     const customUrl = document.getElementById('custom-update-server-url')?.value?.trim() || null;
@@ -93,16 +106,26 @@ async function runCheck() {
             return;
         }
         const channel = info.is_prerelease ? '（预发布）' : '';
-        updateStatus(
-            `发现新版本 ${info.latest_version}${channel} · ${info.asset_name}，正在下载…`,
-            { showProgress: true, progress: 0 },
+        // 不强更：发现新版本先用 M3 对话框征求同意，拒绝则停在提示页
+        const confirmed = await showUpdateConfirmDialog(
+            `发现新版本 ${info.latest_version}${channel}（${info.asset_name}）。` +
+            '\n要下载并安装吗？安装会重启启动器。',
         );
-        await downloadAndApply(({ done, total, label }) => {
+        if (!confirmed) {
+            updateStatus(`发现新版本 ${info.latest_version}${channel}，已取消。可稍后再检查。`);
+            return;
+        }
+        updateStatus(`正在下载 ${info.asset_name}…`, {
+            showProgress: true,
+            progress: 0,
+        });
+        const file = await downloadUpdate(({ done, total, label }) => {
             updateStatus(label || '下载中…', {
                 showProgress: true,
                 progress: total > 0 ? done / total : 0,
             });
         });
+        await applyDownloaded(file);
     } catch (err) {
         console.error('update failed:', err);
         updateStatus(`更新失败：${err}`);
