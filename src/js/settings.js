@@ -171,7 +171,7 @@ async function initSettingsPage() {
     }
     document.getElementById("device-identifier").innerText = await getDeviceIdentifier();
     document.getElementById("device-identifier").addEventListener("click", async () => {
-        await copy(await getDeviceIdentifier());
+        await copy((await getDeviceIdentifier()).replaceAll(" ", ""));
     });
 }
 

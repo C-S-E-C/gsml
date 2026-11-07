@@ -12,7 +12,6 @@
 //! - 硬盘只采「固定内置盘」：Windows 按 MediaType/InterfaceType 过滤、Linux 按
 //!   lsblk RM 过滤、macOS 改查 NVMe/SATA 数据源，避免插拔 U 盘改变识别码。
 
-use regex::Regex;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fs;
@@ -21,6 +20,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use md5::{Md5, Digest};
 
 // ============================================================
 // 平台判定
@@ -199,8 +199,6 @@ struct WinCim {
     uuid: String,
     disks: Vec<String>,
     gpu_pnp: Vec<String>,
-    macs: Vec<String>,
-    mac_fallback: Vec<String>,
 }
 
 /// 取批量 JSON 里标量字段（脚本里统一包了 @()，取首个元素）
@@ -240,21 +238,7 @@ fn win_cim_batch() -> WinCim {
         uuid: json_str(&v, "u"),
         disks: json_list(&v, "d"),
         gpu_pnp: json_list(&v, "g"),
-        macs: json_list(&v, "m"),
-        mac_fallback: json_list(&v, "m2"),
     }
-}
-
-/// 物理网卡地址单独查询（批量结果为空时才用）
-fn win_mac_query(prop: &str) -> Vec<String> {
-    let ps = format!(
-        "Get-CimInstance Win32_NetworkAdapter | Where-Object {{$_.PhysicalAdapter -eq $true}} | Select-Object -ExpandProperty {prop}"
-    );
-    run(&["powershell", "-NoProfile", "-Command", &ps], 5)
-        .lines()
-        .map(|l| l.trim().replace(':', "").to_lowercase())
-        .filter(|l| !l.is_empty())
-        .collect()
 }
 
 // ============================================================
@@ -456,87 +440,6 @@ fn get_disk_serials(win: Option<&WinCim>) -> String {
     join_all(vals)
 }
 
-fn linux_permanent_macs() -> Vec<String> {
-    static RE_PERM: OnceLock<Regex> = OnceLock::new();
-    let re_perm = RE_PERM.get_or_init(|| {
-        Regex::new(r"Permanent address:\s*([0-9a-fA-F:]{17})").unwrap()
-    });
-    let mut vals = Vec::new();
-    let netdir = Path::new("/sys/class/net");
-    if !netdir.is_dir() {
-        return vals;
-    }
-    let entries = match fs::read_dir(netdir) {
-        Ok(e) => e,
-        Err(_) => return vals,
-    };
-    for entry in entries.flatten() {
-        let iface = entry.file_name().to_string_lossy().to_string();
-        if iface == "lo" {
-            continue;
-        }
-        let addr_path = format!("/sys/class/net/{iface}/address");
-        let addr = read_file_first_line(&addr_path);
-        let out = run(&["ethtool", "-P", &iface], 5);
-        let perm = re_perm
-            .captures(&out)
-            .map(|c| c[1].to_string())
-            .unwrap_or_default();
-        let use_ = if !perm.is_empty() { perm } else { addr };
-        if !use_.is_empty() && use_ != "00:00:00:00:00:00" {
-            vals.push(use_.replace(':', "").to_lowercase());
-        }
-    }
-    vals
-}
-
-fn get_mac(win: Option<&WinCim>) -> String {
-    let mut vals: Vec<String> = Vec::new();
-    match current_os() {
-        Os::Linux => vals = linux_permanent_macs(),
-        Os::Windows => {
-            // 批量结果优先；PermanentAddress 为空时用同一批里的 MACAddress
-            if let Some(w) = win {
-                vals = if w.macs.is_empty() {
-                    w.mac_fallback
-                        .iter()
-                        .map(|l| l.trim().replace(':', "").to_lowercase())
-                        .filter(|l| !l.is_empty())
-                        .collect()
-                } else {
-                    w.macs
-                        .iter()
-                        .map(|l| l.trim().replace(':', "").to_lowercase())
-                        .filter(|l| !l.is_empty())
-                        .collect()
-                };
-            }
-            // 整批失败时才逐条回退（与旧版行为一致）
-            if vals.is_empty() {
-                vals = win_mac_query("PermanentAddress");
-                if vals.is_empty() {
-                    vals = win_mac_query("MACAddress");
-                }
-            }
-        }
-        Os::Darwin => {
-            static RE_ETH: OnceLock<Regex> = OnceLock::new();
-            let re = RE_ETH.get_or_init(|| {
-                Regex::new(r"Ethernet Address:\s*([0-9a-fA-F:]{17})").unwrap()
-            });
-            let out = run(&["networksetup", "-listallhardwareports"], 5);
-            for line in out.lines() {
-                if let Some(c) = re.captures(line) {
-                    vals.push(c[1].replace(':', "").to_lowercase());
-                }
-            }
-        }
-    }
-    let zero = "0".repeat(12);
-    vals.retain(|v| !v.is_empty() && v != &zero);
-    join_all(vals)
-}
-
 fn get_gpu_uuids(win: Option<&WinCim>) -> String {
     let mut vals: Vec<String> = Vec::new();
     match current_os() {
@@ -630,7 +533,7 @@ fn compute_device_identifier() -> String {
         None
     };
     // 注意：保持旧版字段顺序不变（机器码结果与顺序相关）
-    let getters: [fn(Option<&WinCim>) -> String; 8] = [
+    let getters: [fn(Option<&WinCim>) -> String; 7] = [
         get_board_serial,
         get_bios_serial,
         get_cpu_serial,
@@ -638,7 +541,6 @@ fn compute_device_identifier() -> String {
         get_chassis_serial,
         get_disk_serials,
         get_gpu_uuids,
-        get_mac,
     ];
     let parts: Vec<String> = std::thread::scope(|s| {
         let handles: Vec<_> = getters
@@ -651,10 +553,14 @@ fn compute_device_identifier() -> String {
         handles
             .into_iter()
             .map(|h| h.join().unwrap_or_default())
-            .map(|p| clean(&p))
+            .map(|p| clean(&p))                       // 先规范化
+            .map(|p| Md5::digest(p.as_bytes())// 再 MD5
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>())
             .collect()
     });
-    parts.join("-").to_uppercase()
+    parts.join(" ").to_uppercase()
 }
 
 /// 机器码命令。
