@@ -68,7 +68,7 @@ export function escapeHtml(text) {
 //   · 并发调用共享同一个 Promise，不会重复 invoke。
 let deviceIdentifierPromise = null;
 
-export function getDeviceIdentifier() {
+export function getDeviceIdentifier(base=16) {
     const cached = sessionStorage.getItem('device-identifier');
     if (cached) return Promise.resolve(cached);
     deviceIdentifierPromise ??= invokeFn('get_device_identifier')
@@ -83,7 +83,6 @@ export function getDeviceIdentifier() {
             console.error('get_device_identifier failed:', err);
             return null;
         });
-    return deviceIdentifierPromise;
 }
 
 // 后台预热：尽早填充缓存，但绝不阻塞任何页面的加载。
