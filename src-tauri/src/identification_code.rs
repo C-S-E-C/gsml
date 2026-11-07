@@ -72,14 +72,22 @@ fn join_all<I: IntoIterator<Item = String>>(vals: I) -> String {
 /// 由独立线程持续排空 stdout，避免输出写满 64KB 管道缓冲导致子进程
 /// 卡死到超时被杀、输出丢失（旧版缺陷：进程结束前从不读取管道）。
 fn run(cmd: &[&str], timeout_secs: u64) -> String {
-    let mut child = match Command::new(cmd[0])
+    let mut builder = Command::new(cmd[0]);
+    builder
         .args(&cmd[1..])
         .stdout(Stdio::piped())
         // 旧版捕获 stderr 但从不读取，语义等同丢弃；直接 null 顺带避免
         // 子进程因 stderr 写满缓冲而阻塞
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+    // Windows：隐藏子进程（PowerShell/wmic/nvidia-smi）的控制台窗口，
+    // 否则正式版（无终端宿主）每次采集都会闪黑框。
+    #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        builder.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = match builder.spawn() {
         Ok(c) => c,
         Err(_) => return String::new(),
     };
