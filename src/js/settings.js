@@ -211,7 +211,11 @@ function drunkenBishop(input, height, width) {
   }
 
   // ---- 初始化画布 ----
-  const STEP_CHARS = [' ', '.', '`', ':', ';', '+', '=', 'x', 'X', '$', '&', '#', '%', 'W', '@'];
+  const STEP_CHARS = [
+    ' ', '·', '.', ':', ';', 'i', 'l', '!', '|', '1', 't', 'f', 'j', 'r', 'x',
+    'n', 'u', 'v', 'c', 'o', 'e', 'a', 's', 'd', 'b', 'p', 'q', 'g', 'h', 'k',
+    'M', '8', '@'
+  ];
   const grid = Array.from({ length: height }, () => new Array(width).fill(0));
 
   // 起始坐标
@@ -265,7 +269,7 @@ function drunkenBishop(input, height, width) {
     for (let col = 0; col < width; col++) {
       const count = grid[row][col];
       if (count === 0) body += '\t';
-      else if (count >= 15) body += '@';
+      else if (count >= 32) body += '@';
       else body += STEP_CHARS[count];
     }
     // 显式补齐：若 body 不足 width，用 '0' 补足
