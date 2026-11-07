@@ -24,10 +24,22 @@
   --md-sys-color-surface: var(--md-sys-color-background);
   --md-sys-color-primary: var(--md-sys-color-on-surface);
   --md-sys-color-surface-container-high: var(--md-sys-color-surface-container-highest);
-
   --md-primary-tab-container-shape: border-box;
-
   --md-ref-typeface-brand: sans-serif;
+  --md-menu-item-selected-container-color: var(--md-filled-tonal-button-container-color);
+  --md-menu-item-selected-label-text-color: var(--md-filled-tonal-button-label-text-color);
+    /* Filled Select 聚焦态整组 token：指示条用主色点缀，文字与图标用中性色 */
+  --md-filled-select-text-field-focus-active-indicator-color: var(--md-sys-color-primary);
+  --md-filled-select-text-field-focus-active-indicator-height: 2px;
+  --md-filled-select-text-field-focus-input-text-color: var(--md-sys-color-on-surface);
+  --md-filled-select-text-field-focus-label-text-color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+  --md-filled-select-text-field-focus-leading-icon-color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+  --md-filled-select-text-field-focus-trailing-icon-color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+  --md-filled-select-text-field-focus-supporting-text-color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+
+  /* 键盘导航时 md-focus-ring 的颜色（md-select-option 等组件共用）：
+     默认回落 --md-sys-color-secondary 未定义 -> 硬编码紫灰 #625b71，跟主题不符 */
+  --md-focus-ring-color: var(--md-sys-color-primary);
 }
 
 /* Small generic utility used across pages */

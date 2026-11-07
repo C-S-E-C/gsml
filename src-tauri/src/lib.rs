@@ -7,6 +7,7 @@ mod deeplink_handler;
 mod skin_manager;
 mod minecraft_manager;
 mod identification_code;
+mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -54,6 +55,9 @@ pub fn run() {
             minecraft_manager::install_version,
             minecraft_manager::cancel_install,
             identification_code::get_device_identifier,
+            updater::check_update,
+            updater::download_update,
+            updater::apply_update,
             is_debug,
         ])
         .run(tauri::generate_context!())
@@ -62,5 +66,6 @@ pub fn run() {
 
 #[tauri::command]
 fn is_debug() -> bool {
-    tauri::is_dev()
+    // `tauri build --debug` 时 is_dev 仍为 false，用 debug_assertions 补上
+    cfg!(debug_assertions) || tauri::is_dev()
 }

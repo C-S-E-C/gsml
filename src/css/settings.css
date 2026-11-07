@@ -81,13 +81,19 @@ body {
   display: none;
 }
 
-/* ── About panel (centered, 仿照 README 居中排版) ─────────── */
-.about-card {
+.setting-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  font-size: 0.9rem;
+}
+/* ── Setting cards (About / Update 等面板共用容器) ─────────── */
+.setting-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
   padding: 32px 28px;
   border-radius: 20px;
   background-color: var(--md-sys-color-surface-container);
@@ -95,38 +101,57 @@ body {
   margin-bottom: 16px;
 }
 
-.about-logo {
+/* About：居中排版（仿 README） */
+.setting-card--center {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Update 等表单面板：左对齐 */
+.setting-card--left {
+  align-items: stretch;
+  text-align: left;
+}
+
+.setting-logo {
   width: 96px;
   height: 96px;
   padding: 8px;
   box-sizing: border-box;
 }
 
-.about-title {
+.setting-title {
   margin: 16px 0 4px;
   font-size: 1.35rem;
   font-weight: 600;
+  color: var(--md-sys-color-on-surface);
 }
 
-.about-subtitle {
+.setting-card--left .setting-title {
+  margin: 0 0 8px;
+}
+
+.setting-subtitle {
+  margin: 0;
   font-size: 0.9rem;
   color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
 }
 
-.about-version {
+.setting-version {
   margin-top: 12px;
   font-size: 0.85rem;
   color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
 }
 
-.about-divider {
+.setting-divider {
   width: 100%;
   height: 1px;
   margin: 24px 0;
   background-color: var(--md-sys-color-outline-variant);
 }
 
-.about-section-label {
+.setting-section-label {
   align-self: flex-start;
   font-size: 0.8rem;
   letter-spacing: 0.08em;
@@ -180,43 +205,20 @@ body {
   text-decoration: underline;
 }
 
-.about-note {
+.setting-note {
   align-self: flex-start;
   font-size: 0.75rem;
   text-align: left;
   color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
 }
 
-.about-note a {
+.setting-note a {
   color: var(--md-sys-color-primary);
   text-decoration: none;
 }
 
-.about-note a:hover {
+.setting-note a:hover {
   text-decoration: underline;
-}
-
-/* ── Update panel ─────────────────────────────────────────── */
-.update-card {
-  padding: 32px 28px;
-  border-radius: 20px;
-  background-color: var(--md-sys-color-surface-container);
-  box-sizing: border-box;
-  margin-bottom: 16px;
-  text-align: left;
-}
-
-.update-title {
-  margin: 0 0 8px;
-  font-size: 1.35rem;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface);
-}
-
-.update-description {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
 }
 
 /* ── Legacy settings form rows (kept for future panels) ───── */

@@ -349,10 +349,6 @@ body {
 /* 下拉菜单选中项容器/文字色：跟随应用主题的 Secondary Container 配色。
    本主题未定义 --md-sys-color-secondary-container，material 会回落到
    硬编码浅紫 #e8def8，与整体配色不符，这里显式覆盖。 */
-.start-mc md-select-option {
-    --md-menu-item-selected-container-color: var(--md-filled-tonal-button-container-color);
-    --md-menu-item-selected-label-text-color: var(--md-filled-tonal-button-label-text-color);
-}
 
 .start-mc md-fab {
     width: 80%;

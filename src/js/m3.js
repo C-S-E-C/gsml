@@ -17,6 +17,7 @@ import '@material/web/progress/linear-progress.js';
 import '@material/web/progress/circular-progress.js';
 import '@material/web/menu/menu.js';
 import '@material/web/menu/menu-item.js';
+import '@material/web/switch/switch.js';
 
 // stylesheet & icons
 import {styles as typescaleStyles} from '@material/web/typography/md-typescale-styles.js';
