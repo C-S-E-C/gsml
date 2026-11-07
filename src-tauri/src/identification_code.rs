@@ -203,7 +203,6 @@ struct WinCim {
     board: String,
     bios: String,
     cpu: String,
-    chassis: String,
     uuid: String,
     disks: Vec<String>,
     gpu_pnp: Vec<String>,
@@ -242,7 +241,6 @@ fn win_cim_batch() -> WinCim {
         board: json_str(&v, "b"),
         bios: json_str(&v, "bi"),
         cpu: json_str(&v, "cpu"),
-        chassis: json_str(&v, "ch"),
         uuid: json_str(&v, "u"),
         disks: json_list(&v, "d"),
         gpu_pnp: json_list(&v, "g"),
@@ -345,21 +343,6 @@ fn get_product_uuid(win: Option<&WinCim>) -> String {
         }
         Os::Linux => "0".to_string(),
         Os::Darwin => mac_ioreg("IOPlatformUUID"),
-    }
-}
-
-fn get_chassis_serial(win: Option<&WinCim>) -> String {
-    match current_os() {
-        Os::Windows => {
-            if let Some(w) = win {
-                if !w.chassis.is_empty() {
-                    return w.chassis.clone();
-                }
-            }
-            win_cim("SystemEnclosure", "SerialNumber")
-        }
-        Os::Linux => "0".to_string(),
-        Os::Darwin => String::new(),
     }
 }
 
@@ -541,12 +524,11 @@ fn compute_device_identifier() -> String {
         None
     };
     // 注意：保持旧版字段顺序不变（机器码结果与顺序相关）
-    let getters: [fn(Option<&WinCim>) -> String; 7] = [
+    let getters: [fn(Option<&WinCim>) -> String; 6] = [
         get_board_serial,
         get_bios_serial,
         get_cpu_serial,
         get_product_uuid,
-        get_chassis_serial,
         get_disk_serials,
         get_gpu_uuids,
     ];

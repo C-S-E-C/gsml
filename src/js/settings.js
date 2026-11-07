@@ -173,6 +173,111 @@ async function initSettingsPage() {
     document.getElementById("device-identifier").addEventListener("click", async () => {
         await copy((await getDeviceIdentifier()).replaceAll(" ", ""));
     });
+    document.getElementById("device-identifier-art").innerText = drunkenBishop(await getDeviceIdentifier(), 17,33);
+}
+
+/**
+ * 生成带边框的 Drunken Bishop 随机艺术图（ASCII Art）
+ * 每行内容在右侧边框 | 之前用 '0' 补齐到 width 长度
+ *
+ * @param {string} input - 十六进制字符串（可包含空格、换行，不区分大小写）
+ * @param {number} height - 画布内容高度（行数），需为正整数
+ * @param {number} width  - 画布内容宽度（列数），需为正整数
+ * @returns {string} 带边框的多行字符串
+ */
+function drunkenBishop(input, height, width) {
+  // ---- 参数校验 ----
+  if (typeof input !== 'string') {
+    throw new TypeError('input 必须是字符串');
+  }
+  if (!Number.isInteger(height) || height <= 0) {
+    throw new RangeError('height 必须是正整数');
+  }
+  if (!Number.isInteger(width) || width <= 0) {
+    throw new RangeError('width 必须是正整数');
+  }
+
+  // ---- 清理并校验十六进制 ----
+  const hex = input.replace(/\s+/g, '').toLowerCase();
+  if (!/^[0-9a-f]*$/.test(hex)) {
+    throw new Error('input 包含非十六进制字符（仅允许 0-9, a-f, A-F, 空白）');
+  }
+
+  // ---- 十六进制 -> 字节数组（奇数长度左侧补 0）----
+  const paddedHex = hex.length % 2 === 0 ? hex : '0' + hex;
+  const bytes = [];
+  for (let i = 0; i < paddedHex.length; i += 2) {
+    bytes.push(parseInt(paddedHex.substr(i, 2), 16));
+  }
+
+  // ---- 初始化画布 ----
+  const STEP_CHARS = [' ', '.', '`', ':', ';', '+', '=', 'x', 'X', '$', '&', '#', '%', 'W', '@'];
+  const grid = Array.from({ length: height }, () => new Array(width).fill(0));
+
+  // 起始坐标
+  const START_X = (width - 1) / 2;
+  const START_Y = (height - 1) / 2;
+
+  let x = Math.floor(START_X);
+  let y = Math.floor(START_Y);
+
+  if (x < 0) x = 0; else if (x >= width) x = width - 1;
+  if (y < 0) y = 0; else if (y >= height) y = height - 1;
+
+  // 起点计入一次脚印
+  grid[y][x] += 1;
+
+  // ---- 方向映射 ----
+  const DIRS = [
+    [-1, -1], // 00 左上
+    [ 1, -1], // 01 右上
+    [-1,  1], // 10 左下
+    [ 1,  1]  // 11 右下
+  ];
+
+  // ---- 醉汉游走 ----
+  for (let b of bytes) {
+    for (let shift = 6; shift >= 0; shift -= 2) {
+      const pair = (b >> shift) & 0x03;
+      const [dx, dy] = DIRS[pair];
+      x += dx;
+      y += dy;
+
+      if (x < 0) x = 0;
+      else if (x >= width) x = width - 1;
+      if (y < 0) y = 0;
+      else if (y >= height) y = height - 1;
+
+      grid[y][x] += 1;
+    }
+  }
+
+  // ---- 渲染为带边框的字符串 ----
+  const border =  '═'.repeat(width);
+  const lines = [];
+  lines.push('╔'+border+'╗');
+  const title = 'Drunken Bishop';
+  lines.push('║' + '\t'.repeat(Math.floor((width - title.length) / 2)) + title + '\t'.repeat(width - title.length - Math.floor((width - title.length) / 2)) + '║');
+  lines.push('╠'+border+'╣');
+
+  for (let row = 0; row < height; row++) {
+    let body = '';
+    for (let col = 0; col < width; col++) {
+      const count = grid[row][col];
+      if (count === 0) body += '\t';
+      else if (count >= 15) body += '@';
+      else body += STEP_CHARS[count];
+    }
+    // 显式补齐：若 body 不足 width，用 '0' 补足
+    // （正常情况下上面的循环已保证长度恰好为 width，此处为防御性补齐）
+    if (body.length < width) {
+      body += '0'.repeat(width - body.length);
+    }
+    lines.push('║' + body + '║');
+  }
+
+  lines.push('╚'+border+'╝');
+  return lines.join('\n');
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
