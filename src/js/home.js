@@ -827,7 +827,7 @@ async function handleConfirm(dialog) {
             }
             setAddAccountBusy(true);
             account = await invokeFn('login_offline', {
-                name: name.slice(0, MAX_PLAYER_NAME),
+                name: name
             });
         }
 

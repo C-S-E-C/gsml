@@ -14,6 +14,7 @@ import '@material/web/select/filled-select.js';
 import '@material/web/select/select-option.js';
 import '@material/web/textfield/outlined-text-field.js';
 import '@material/web/progress/linear-progress.js';
+import '@material/web/progress/circular-progress.js';
 import '@material/web/menu/menu.js';
 import '@material/web/menu/menu-item.js';
 

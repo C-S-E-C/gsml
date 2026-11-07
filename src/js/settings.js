@@ -3,7 +3,7 @@
 // list on the left) and the content pane on the right. Only the "About"
 // view exists for now; more views can be added to the list / #view-* panels.
 
-import { isPage } from './main.js';
+import { isPage,invokeFn,tauriapp,getDeviceIdentifier } from './main.js';
 
 const VIEWS = [
     { key: 'about' },
@@ -41,10 +41,22 @@ function switchSettingsView(key) {
     setActiveView(key);
 }
 
-function initSettingsPage() {
+async function copy(text) {
+    await navigator.clipboard.writeText(text);
+}
+
+async function initSettingsPage() {
     // Default to the first (only) view: "about".
     const first = VIEWS.length > 0 ? VIEWS[0].key : 'about';
     setActiveView(first);
+    document.getElementsByClassName("about-version")[0].innerHTML += ` ${await tauriapp.getVersion()} &nbsp;`;
+    if (await invokeFn('is_debug')) {
+        document.getElementsByClassName("about-version")[0].innerHTML += `<span class="muted">[PREVIEW]</span>`;
+    }
+    document.getElementById("device-identifier").innerText = await getDeviceIdentifier();
+    document.getElementById("device-identifier").addEventListener("click", async () => {
+        await copy(await getDeviceIdentifier());
+    });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

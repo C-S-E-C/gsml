@@ -616,10 +616,14 @@ fn glob_path(dir: &str) -> std::io::Result<Vec<String>> {
 // ============================================================
 // 主流程
 // ============================================================
-/// 机器码。8 个字段采集器并行执行（Windows 端共享一次 CIM 批量结果），
+// 进程级缓存：机器码在本次运行内不会变化，算一次即可。之后所有调用
+// （含前端重复 invoke、重开页面）直接命中缓存，零开销返回。
+static IDENTIFIER_CACHE: OnceLock<String> = OnceLock::new();
+
+/// 实际采集。8 个字段采集器并行执行（Windows 端共享一次 CIM 批量结果），
 /// 输出格式与旧版一致：clean 后按固定顺序用 '-' 连接并整体大写。
-#[tauri::command]
-pub fn get_id_code() -> String {
+/// 重 I/O：Windows 上要冷启动一个 PowerShell 进程跑 CIM 批量查询。
+fn compute_device_identifier() -> String {
     let win = if current_os() == Os::Windows {
         Some(win_cim_batch())
     } else {
@@ -651,4 +655,25 @@ pub fn get_id_code() -> String {
             .collect()
     });
     parts.join("-").to_uppercase()
+}
+
+/// 机器码命令。
+///
+/// 必须是 async：Tauri 2 的同步命令在主线程上执行，而本命令要做硬件
+/// 采集（PowerShell 冷启动 + CIM 查询，可能耗时数秒），同步版会把窗口
+/// 事件循环和其它 IPC（如账号加载 list_accounts）全部卡死。async 命令
+/// 脱离主线程执行，重活再丢进 spawn_blocking，避免占用异步运行时的
+/// 事件循环线程。
+#[tauri::command]
+pub async fn get_device_identifier() -> String {
+    if let Some(id) = IDENTIFIER_CACHE.get() {
+        return id.clone();
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        IDENTIFIER_CACHE
+            .get_or_init(compute_device_identifier)
+            .clone()
+    })
+    .await
+    .unwrap_or_default()
 }

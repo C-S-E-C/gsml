@@ -251,3 +251,23 @@ body {
   gap: 10px;
   margin-top: 12px;
 }
+
+#device-identifier {
+  max-width: 100%;
+  position: relative;
+  display: block;
+  word-break: break-all;
+  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.2s ease-in-out;
+}
+
+#device-identifier:hover {
+  border-color: var(--md-sys-color-outline);
+}
