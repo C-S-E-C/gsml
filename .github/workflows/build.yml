@@ -295,3 +295,98 @@ jobs:
           path: dist/${{ matrix.platform }}/
           if-no-files-found: warn
           retention-days: 7
+
+  # ===== 所有平台 build 完成后，把下载 badge 追加到 release 正文 =====
+  # 单独一个 job 并在 needs 上等待全部平台，避免并行矩阵互相覆盖 release 正文；
+  # 依据 release 上「实际已上传的产物」生成 badge（幂等：已有则替换，无产物则跳过）。
+  update-download-badges:
+    if: always()
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append download badges to release body
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          MARKER="## 下载"
+          REPO="${GITHUB_REPOSITORY}"
+
+          BODY="$(gh release view "$TAG" --json body --jq '.body')"
+          ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+
+          # 生成单个 badge：$1=label, $2=logo（空=不带 logo）, $3=下载链接
+          shields() {
+            local label="$1" logo="$2" url="$3"
+            if [ -n "$logo" ]; then
+              printf '[![Static Badge](https://img.shields.io/badge/%s-blue?logo=%s&logoColor=%%23fff)](%s)' \
+                "$label" "$logo" "$url"
+            else
+              printf '[![Static Badge](https://img.shields.io/badge/%s-blue)](%s)' \
+                "$label" "$url"
+            fi
+          }
+
+          L_LINUX=(); L_MAC=(); L_WIN=()
+          url_of() { printf 'https://github.com/%s/releases/download/%s/%s' "$REPO" "$TAG" "$1"; }
+
+          while IFS= read -r asset; do
+            [ -z "$asset" ] && continue
+            url="$(url_of "$asset")"
+
+            case "$asset" in
+              # ── Linux（logo=linux，标签 amd64-*）──
+              *.deb)        badge="$(shields "amd64-deb"    "linux" "$url")"; L_LINUX+=("$badge") ;;
+              *.rpm)        badge="$(shields "amd64-rpm"    "linux" "$url")"; L_LINUX+=("$badge") ;;
+              *.AppImage)   badge="$(shields "amd64-appimage" "linux" "$url")"; L_LINUX+=("$badge") ;;
+
+              # ── macOS（logo=apple，按架构 aarch64/x64）──
+              *.dmg)
+                if [[ "$asset" =~ (aarch64|arm64) ]]; then arch="aarch64"; else arch="x64"; fi
+                badge="$(shields "${arch}-dmg" "apple" "$url")"; L_MAC+=("$badge") ;;
+              *.app.zip)
+                if [[ "$asset" =~ (aarch64|arm64) ]]; then arch="aarch64"; else arch="x64"; fi
+                badge="$(shields "${arch}-app" "apple" "$url")"; L_MAC+=("$badge") ;;
+
+              # ── Windows（无 logo，标签 windows-*）──
+              *.msi)          badge="$(shields "windows-msi" "" "$url")"; L_WIN+=("$badge") ;;
+              *-setup.exe|*_setup.exe) badge="$(shields "windows-nsis" "" "$url")"; L_WIN+=("$badge") ;;
+              gsml.exe)       badge="$(shields "windows-portable" "" "$url")"; L_WIN+=("$badge") ;;
+              *) continue ;;
+            esac
+          done <<< "$ASSETS"
+
+          # 按平台顺序拼装正文片段
+          SECTION=""
+          add_section() { # $1=平台标题, 数组经由 stdin 读入
+            local title="$1"; local -n arr=$2
+            [ ${#arr[@]} -eq 0 ] && return
+            SECTION+=$'\n'"**${title}**"$'\n'
+            local i
+            for ((i=0;i<${#arr[@]};i++)); do
+              SECTION+="- ${arr[$i]}"$'\n'
+            done
+          }
+          add_section "Linux"   L_LINUX
+          add_section "macOS"   L_MAC
+          add_section "Windows" L_WIN
+
+          if [ -z "$SECTION" ]; then
+            echo "::notice::No release assets found, skip body update."
+            exit 0
+          fi
+
+          # 幂等：若正文已含该标记，则截断并整体重写该节
+          if grep -qF "$MARKER" <<< "$BODY"; then
+            NEW_BODY="${BODY%%$MARKER*}"
+          else
+            NEW_BODY="$BODY"
+          fi
+          NEW_BODY+=$'\n\n'"${MARKER}"$'\n'"${SECTION}"
+
+          printf '%s\n' "$NEW_BODY" > body.md
+          gh release edit "$TAG" --notes-file body.md
+          echo "::notice::Appended download badges to release $TAG"
