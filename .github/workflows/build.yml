@@ -148,7 +148,7 @@ jobs:
         if: steps.check.outputs.need_build == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 21
           cache: pnpm
 
       - name: Setup Rust
@@ -193,33 +193,85 @@ jobs:
         if: steps.check.outputs.need_build == 'true'
         run: pnpm install --frozen-lockfile
       # 显式指定 bundle 目标，保证产物齐全：linux=AppImage/deb/rpm，windows=msi/nsis，mac=app/dmg
+      # 用重试包裹：cargo 编译有增量缓存，重试主要重做 bundle 阶段的下载
+      # （如 AppImage 的 AppRun、windows 的 NSIS 等），可扛过 GitHub 偶发 504。
       - name: Build (release)
         if: steps.check.outputs.need_build == 'true' && !github.event.release.prerelease
         shell: bash
         run: |
-          case "${{ matrix.platform }}" in
-            linux)   pnpm tauri build --bundles appimage,deb,rpm ;;
-            windows) pnpm tauri build --bundles msi,nsis ;;
-            mac)     pnpm tauri build --bundles app,dmg ;;
-          esac
+          set -euo pipefail
+          do_build() {
+            case "${{ matrix.platform }}" in
+              linux)   pnpm tauri build --bundles appimage,deb,rpm ;;
+              windows) pnpm tauri build --bundles msi,nsis ;;
+              mac)     pnpm tauri build --bundles app,dmg ;;
+            esac
+          }
+          attempt=0
+          until do_build; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::error::pnpm tauri build failed after $attempt attempts (persistent download/bundle error)."
+              exit 1
+            fi
+            echo "::warning::build attempt $attempt failed; retrying in $((10 * attempt))s…"
+            sleep $((10 * attempt))
+          done
 
       - name: Build (debug)
         if: steps.check.outputs.need_build == 'true' && github.event.release.prerelease
         shell: bash
         run: |
-          case "${{ matrix.platform }}" in
-            linux)   pnpm tauri build --bundles appimage,deb,rpm --debug ;;
-            windows) pnpm tauri build --bundles msi,nsis --debug ;;
-            mac)     pnpm tauri build --bundles app,dmg --debug ;;
-          esac
+          set -euo pipefail
+          do_build() {
+            case "${{ matrix.platform }}" in
+              linux)   pnpm tauri build --bundles appimage,deb,rpm --debug ;;
+              windows) pnpm tauri build --bundles msi,nsis --debug ;;
+              mac)     pnpm tauri build --bundles app,dmg --debug ;;
+            esac
+          }
+          attempt=0
+          until do_build; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::error::pnpm tauri build (debug) failed after $attempt attempts."
+              exit 1
+            fi
+            echo "::warning::build attempt $attempt failed; retrying in $((10 * attempt))s…"
+            sleep $((10 * attempt))
+          done
 
       - name: Build mac x64 (release)
         if: steps.check.outputs.need_build == 'true' && matrix.platform == 'mac' && !github.event.release.prerelease
-        run: pnpm tauri build --target x86_64-apple-darwin --bundles app,dmg
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempt=0
+          until pnpm tauri build --target x86_64-apple-darwin --bundles app,dmg; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::error::mac x64 build failed after $attempt attempts."
+              exit 1
+            fi
+            echo "::warning::mac x64 build attempt $attempt failed; retrying in $((10 * attempt))s…"
+            sleep $((10 * attempt))
+          done
 
       - name: Build mac x64 (debug)
         if: steps.check.outputs.need_build == 'true' && matrix.platform == 'mac' && github.event.release.prerelease
-        run: pnpm tauri build --target x86_64-apple-darwin --bundles app,dmg --debug
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempt=0
+          until pnpm tauri build --target x86_64-apple-darwin --bundles app,dmg --debug; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::error::mac x64 build (debug) failed after $attempt attempts."
+              exit 1
+            fi
+            echo "::warning::mac x64 build attempt $attempt failed; retrying in $((10 * attempt))s…"
+            sleep $((10 * attempt))
+          done
 
       - name: Collect artifacts
         if: steps.check.outputs.need_build == 'true'
@@ -306,6 +358,9 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          # 该 job 没有 checkout，gh 需要用 GH_REPO 才能解析目标仓库，
+          # 否则 gh 会回退去跑 `git` 而报 "not a git repository"。
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
