@@ -173,7 +173,7 @@ async function initSettingsPage() {
     document.getElementById("device-identifier").addEventListener("click", async () => {
         await copy((await getDeviceIdentifier()).replaceAll(" ", ""));
     });
-    document.getElementById("device-identifier-art").innerText = drunkenBishop(await getDeviceIdentifier(16), 17,33);
+    document.getElementById("device-identifier-art").innerText = drunkenBishop(await getDeviceIdentifier(), 17,33);
 }
 
 /**

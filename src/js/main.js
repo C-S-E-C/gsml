@@ -68,7 +68,7 @@ export function escapeHtml(text) {
 //   · 并发调用共享同一个 Promise，不会重复 invoke。
 let deviceIdentifierPromise = null;
 
-export function getDeviceIdentifier(base=16) {
+export function getDeviceIdentifier() {
     const cached = sessionStorage.getItem('device-identifier');
     if (cached) return Promise.resolve(cached);
     deviceIdentifierPromise ??= invokeFn('get_device_identifier')
