@@ -83,6 +83,7 @@ export function getDeviceIdentifier() {
             console.error('get_device_identifier failed:', err);
             return null;
         });
+    return deviceIdentifierPromise;
 }
 
 // 后台预热：尽早填充缓存，但绝不阻塞任何页面的加载。
