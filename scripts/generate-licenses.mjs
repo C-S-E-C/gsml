@@ -164,14 +164,17 @@ function step1CargoAbout() {
     ['about', 'generate', 'about.hbs', '-o', '../public/THIRD_PARTY_LICENSES.html'],
     { cwd: SRC_TAURI }
   );
+  if (ok && existsSync(OUT)) return;
+  // cargo-about 不可用 / 下载失败 / 生成失败时：回退到仓库中已提交的
+  // public/THIRD_PARTY_LICENSES.html，避免 CI 因 GitHub 下载 504 而整次构建失败。
   if (!ok) {
-    console.error('[licenses] cargo about generate failed.');
-    process.exit(1);
+    console.warn('[licenses] cargo about generate failed (cargo-about unavailable or download failed).');
   }
-  if (!existsSync(OUT)) {
-    console.error(`[licenses] expected output not found: ${OUT}`);
-    process.exit(1);
+  if (existsSync(OUT)) {
+    console.warn(`[licenses] falling back to the committed ${OUT} (Rust license section will not be regenerated).`);
+    return;
   }
+  throw new Error(`[licenses] expected output not found and no committed fallback: ${OUT}`);
 }
 
 /**
