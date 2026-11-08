@@ -141,11 +141,11 @@ jobs:
       - name: Setup pnpm
         if: steps.check.outputs.need_build == 'true'
         uses: pnpm/action-setup@v4
-        with:
-          # 用 pnpm 10：pnpm 9 的 --frozen-lockfile 对 rolldown 的可选原生
-          # binding（@rolldown/binding-linux-x64-gnu 等）漏装，导致
-          # "Cannot find native binding"；本地 pnpm 10 已验证能正确按平台安装。
-          version: 10
+        # 版本由 package.json 的 packageManager 字段锁定为 pnpm@10：
+        # pnpm 9 的 --frozen-lockfile 对 rolldown 可选原生 binding 漏装，
+        # 触发 "Cannot find native binding"；pnpm 10 已验证按平台正确安装。
+        # 注意：不要在此再写 version，否则会与 packageManager 冲突报
+        # ERR_PNPM_BAD_PM_VERSION。
 
       - name: Setup Node
         if: steps.check.outputs.need_build == 'true'
