@@ -142,8 +142,10 @@ jobs:
         if: steps.check.outputs.need_build == 'true'
         uses: pnpm/action-setup@v4
         # 版本由 package.json 的 packageManager 字段锁定为 pnpm@10：
-        # pnpm 9 的 --frozen-lockfile 对 rolldown 可选原生 binding 漏装，
-        # 触发 "Cannot find native binding"；pnpm 10 已验证按平台正确安装。
+        # pnpm 对 rolldown 可选原生 binding 在 --frozen-lockfile 下可能漏装，
+        # 触发 "Cannot find native binding"。真正的修复是把 4 个需要的平台
+        # binding 显式声明到 package.json devDependencies（见 package.json），
+        # 使 lockfile 中它们变成非 optional 条目，frozen 安装必然带上。
         # 注意：不要在此再写 version，否则会与 packageManager 冲突报
         # ERR_PNPM_BAD_PM_VERSION。
 
@@ -151,7 +153,7 @@ jobs:
         if: steps.check.outputs.need_build == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 21
+          node-version: 22
           cache: pnpm
 
       - name: Setup Rust
