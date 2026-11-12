@@ -149,6 +149,7 @@
     height: 24px;
     border-radius: 3px;
     object-fit: contain;
+    image-rendering: pixelated;
 }
 
 .dl-hint {
