@@ -1,8 +1,6 @@
-<p align="center">
-  <img src="src/assets/logo.png" alt="Glow Squid Logo" />
-  <h1 align="center">Glow Squid Minecraft Launcher</h1>
-  <strong align="center">A Minecraft launcher built with modern UI</strong>
-</p>
+<p align="center"><img src="src/assets/logo.png" alt="Glow Squid Logo" /></p>
+<h1 align="center">Glow Squid Minecraft Launcher</h1>
+<h3 align="center">Mojang made glow squids look cool. We made them useful.</h3>
 
 [![build](https://github.com/C-S-E-C/gsml/actions/workflows/build.yml/badge.svg)](https://github.com/C-S-E-C/gsml/actions/workflows/build.yml)
 ---
