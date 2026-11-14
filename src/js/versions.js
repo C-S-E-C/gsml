@@ -284,11 +284,13 @@ async function startInstall() {
     setError('');
     setInstalling(true);
     try {
+        // 使用设置页保存的自定义 Java（键 'java-path'），空值则走后端自动检测。
+        const savedJava = await invokeFn('get_svar', { key: 'java-path' }).catch(() => null);
         const installed = await invokeFn('install_version', {
             gameVersion: currentVersion.name,
             loader: idx,
             loaderVersion,
-            javaPath: null,
+            javaPath: savedJava || null,
             customName,
         });
         const bar = $('dl-progress-bar');

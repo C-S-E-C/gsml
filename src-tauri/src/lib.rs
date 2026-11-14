@@ -6,6 +6,8 @@ mod db_handler;
 mod deeplink_handler;
 mod skin_manager;
 mod minecraft_manager;
+mod game_launcher;
+mod java_manager;
 mod identification_code;
 mod updater;
 
@@ -54,6 +56,10 @@ pub fn run() {
             minecraft_manager::list_remote_versions,
             minecraft_manager::install_version,
             minecraft_manager::cancel_install,
+            game_launcher::launch_game,
+            game_launcher::stop_game,
+            java_manager::list_java_installations,
+            java_manager::check_java_path,
             identification_code::get_device_identifier,
             updater::check_update,
             updater::download_update,

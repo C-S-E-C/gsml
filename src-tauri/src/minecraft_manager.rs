@@ -74,7 +74,7 @@ fn default_mc_dir() -> PathBuf {
 }
 
 /// 游戏根目录（TODO: 之后可在设置里支持自定义，simpleValues 存路径）
-fn get_minecraft_dir() -> Result<PathBuf, String> {
+pub(crate) fn get_minecraft_dir() -> Result<PathBuf, String> {
     Ok(default_mc_dir())
 }
 
@@ -363,7 +363,7 @@ async fn find_vanilla_json_url(game_version: &str) -> Result<String, String> {
 }
 
 /// Mojang rules 过滤：os 缺省 = 全平台；allow/disallow 依次生效
-fn lib_allowed(lib: &Value) -> bool {
+pub(crate) fn lib_allowed(lib: &Value) -> bool {
     let Some(rules) = lib["rules"].as_array() else { return true };
     let mut allowed = false;
     for r in rules {
@@ -768,7 +768,7 @@ async fn install_neoforge(
 }
 
 /// 显式 javaPath > JAVA_HOME/bin/java.exe > PATH 上的 java（-version 试探）
-fn find_java(explicit: Option<&str>) -> Result<PathBuf, String> {
+pub(crate) fn find_java(explicit: Option<&str>) -> Result<PathBuf, String> {
     if let Some(p) = explicit {
         let path = PathBuf::from(p);
         if path.is_file() {

@@ -3,12 +3,13 @@
 // list on the left) and the content pane on the right. Only the "About"
 // view exists for now; more views can be added to the list / #view-* panels.
 
-import { isPage,invokeFn,tauriapp,getDeviceIdentifier } from './main.js';
+import { isPage,invokeFn,tauriapp,getDeviceIdentifier,escapeHtml } from './main.js';
 import { checkForUpdates, downloadUpdate, applyDownloaded, onUpdateProgress } from './updater.js';
 
 const VIEWS = [
     { key: 'about' },
     { key: 'update' },
+    { key: 'java' },
     // Add future settings categories here, e.g. { key: 'general' }.
 ];
 
@@ -161,6 +162,129 @@ async function initUpdateSettings() {
     onUpdateProgress(() => {});
 }
 
+// ── Java 设置区（view-java）──────────────────────────────────────────
+// 自定义 Java 路径 + 自动扫描到的 Java 运行时列表。
+// 持久化：simpleValues，键 'java-path'；值为空字符串表示走自动检测。
+const JAVA_SVAR_KEY = 'java-path';
+
+let javaRuntimes = [];
+
+function javaStatusEl() {
+    return document.getElementById('java-status');
+}
+
+function javaStatus(text, isError = false) {
+    const el = javaStatusEl();
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('java-status--error', isError);
+    el.hidden = !text;
+}
+
+function javaActivePath() {
+    const input = document.getElementById('java-path-input');
+    return (input?.value || '').trim();
+}
+
+function javaItemHtml(rt) {
+    const active = rt.is_default || (javaActivePath() && javaActivePath() === rt.path);
+    // 标题格式：「JDK/JRE 版本号 · 厂商」（如 JDK 21.0.4 · Eclipse Temurin）。
+    const title = `${rt.kind} ${rt.version}`;
+    const end = active
+        ? `<md-icon slot="end" class="java-item-active">check_circle</md-icon>`
+        : `<md-filled-tonal-button slot="end" class="java-use" data-path="${escapeHtml(rt.path)}">Use</md-filled-tonal-button>`;
+    return `
+        <md-list-item type="button" class="java-item${active ? ' java-item--active' : ''}" data-path="${escapeHtml(rt.path)}">
+            <md-icon slot="start">local_cafe</md-icon>
+            <div slot="headline">${escapeHtml(title)}</div>
+            <div slot="supporting-text" class="java-item-path">${escapeHtml(rt.path)}</div>
+            ${end}
+        </md-list-item>`;
+}
+
+async function renderJavaList() {
+    const list = document.getElementById('java-list');
+    if (!list) return;
+    list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">正在扫描已安装的 Java…</div></md-list-item>`;
+    try {
+        javaRuntimes = await invokeFn('list_java_installations');
+        if (!Array.isArray(javaRuntimes) || javaRuntimes.length === 0) {
+            list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">未检测到已安装的 Java。</div></md-list-item>`;
+            return;
+        }
+        list.innerHTML = javaRuntimes.map(javaItemHtml).join('');
+    } catch (err) {
+        console.error('list_java_installations failed:', err);
+        list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">扫描失败：${escapeHtml(String(err))}</div></md-list-item>`;
+    }
+}
+
+async function saveJavaPath(value) {
+    try {
+        await invokeFn('set_svar', { key: JAVA_SVAR_KEY, value });
+    } catch (err) {
+        console.error(`set_svar(${JAVA_SVAR_KEY}) failed:`, err);
+        javaStatus(`保存失败：${err}`, true);
+        return false;
+    }
+    return true;
+}
+
+async function initJavaSettings() {
+    const input = document.getElementById('java-path-input');
+    const saveButton = document.getElementById('java-save-button');
+    const clearButton = document.getElementById('java-clear-button');
+    const list = document.getElementById('java-list');
+    if (!input || !saveButton || !list) return;
+
+    input.value = (await loadSvar(JAVA_SVAR_KEY, '')) || '';
+    await renderJavaList();
+
+    saveButton.addEventListener('click', async () => {
+        const raw = input.value.trim();
+        saveButton.disabled = true;
+        try {
+            if (!raw) {
+                if (await saveJavaPath('')) javaStatus('已清空自定义 Java，恢复自动检测。');
+                await renderJavaList();
+                return;
+            }
+            javaStatus('正在校验该 Java…');
+            const rt = await invokeFn('check_java_path', { path: raw });
+            if (await saveJavaPath(rt.path)) {
+                input.value = rt.path;
+                javaStatus(`已保存：${[rt.kind, rt.version].filter(Boolean).join(' ')}${rt.vendor ? `（${rt.vendor}）` : ''} — ${rt.path}`);
+            }
+            await renderJavaList();
+        } catch (err) {
+            javaStatus(String(err), true);
+            await renderJavaList();
+        } finally {
+            saveButton.disabled = false;
+        }
+    });
+
+    clearButton?.addEventListener('click', async () => {
+        input.value = '';
+        if (await saveJavaPath('')) javaStatus('已清空自定义 Java，恢复自动检测。');
+        await renderJavaList();
+    });
+
+    // 列表内 "Use" 按钮：把该运行时设为启动/安装使用的 Java。
+    list.addEventListener('click', async (e) => {
+        const button = e.target.closest('.java-use');
+        if (!button) return;
+        const path = button.dataset.path;
+        if (!path) return;
+        if (await saveJavaPath(path)) {
+            input.value = path;
+            const rt = javaRuntimes.find((r) => r.path === path);
+            javaStatus(`已保存：${[rt?.kind, rt?.version].filter(Boolean).join(' ') || 'Java'} — ${path}`);
+            await renderJavaList();
+        }
+    });
+}
+
 async function initSettingsPage() {
     // Default to the first (only) view: "about".
     const first = VIEWS.length > 0 ? VIEWS[0].key : 'about';
@@ -290,6 +414,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     initSettingsPage();
     initUpdateSettings();
+    initJavaSettings();
 });
 
 // ── Global bridge ────────────────────────────────────────────────────

@@ -716,6 +716,20 @@ async fn ensure_mc_token(msa_id: &str) -> Result<(String, Option<McProfile>), St
     Ok((mc_token, None))
 }
 
+/// 供 game_launcher 调用的公开封装：查微软账号的 msa_id
+pub fn lookup_msa_id_pub(
+    conn: &rusqlite::Connection,
+    account_id: u16,
+) -> Result<(String, String), String> {
+    lookup_msa_id(conn, account_id)
+}
+
+/// 供 game_launcher 调用的公开封装：确保拿到有效 Minecraft token（失败自动刷新）
+pub async fn ensure_mc_token_pub(msa_id: &str) -> Result<String, String> {
+    let (token, _profile) = ensure_mc_token(msa_id).await?;
+    Ok(token)
+}
+
 /// 把 McProfile 转成给前端的 JSON（uuid/name/skins/capes）
 fn profile_to_json(profile: &McProfile, uuid: &str) -> serde_json::Value {
     serde_json::json!({

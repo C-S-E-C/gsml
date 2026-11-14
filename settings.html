@@ -17,8 +17,12 @@
           <span slot="headline">About</span>
         </md-list-item>
         <md-list-item data-view="update" onclick="switchSettingsView('update')">
-          <md-icon slot="start">update</md-icon>
-          <span slot="headline">Update</span>
+          <md-icon slot="start">download</md-icon>
+          <span slot="headline">Download</span>
+        </md-list-item>
+        <md-list-item data-view="java" onclick="switchSettingsView('java')">
+          <md-icon slot="start">local_cafe</md-icon>
+          <span slot="headline">Java</span>
         </md-list-item>
       </md-list>
     </div>
@@ -46,22 +50,23 @@
       <!-- ── Update panel ── -->
       <section id="view-update" class="view-panel" data-view="update" hidden>
         <div class="setting-card setting-card--left">
-          <h2 class="setting-title">Update Settings</h2>
-          <p class="setting-subtitle">Manage your update preferences and check for new versions.</p>
+          <h2 class="setting-title">Download Settings</h2>
+          <p class="setting-subtitle">Manage your download and update preferences.</p>
           <div class="setting-divider"></div>
           <div class="setting-line">
-            <label for="auto-update-toggle">Enable Auto-Update</label>
+            <label for="auto-update-toggle">Enable Update Check</label>
             <md-switch id="auto-update-toggle" selected></md-switch>
           </div>
           <div class="setting-line">
-            <label for="auto-update-fetch-server">Auto-Update Server</label>
+            <label for="auto-update-fetch-server">Update Server</label>
             <md-filled-select id="auto-update-fetch-server">
               <md-select-option value="github" selected>Github</md-select-option>
+              <md-select-option value="github">Cloudflare</md-select-option>
               <md-select-option value="custom">Custom</md-select-option>
             </md-filled-select>
           </div>
           <div class="setting-line" style="display: none;" id="custom-update-server-line">
-            <label for="custom-update-server-url">Custom Auto-Update Server URL</label>
+            <label for="custom-update-server-url">Custom Update Server URL</label>
             <md-outlined-text-field id="custom-update-server-url" placeholder="https://api.github.com/repos/owner/repo"></md-outlined-text-field>
           </div>
           <div class="setting-divider"></div>
@@ -71,6 +76,27 @@
           </div>
           <p class="setting-note" id="update-status" hidden></p>
           <md-linear-progress id="update-progress" hidden></md-linear-progress>
+        </div>
+      </section>
+      <!-- ── Java panel ── -->
+      <section id="view-java" class="view-panel" data-view="java" hidden>
+        <div class="setting-card setting-card--left">
+          <h2 class="setting-title">Java Settings</h2>
+          <p class="setting-subtitle">Choose the Java runtime used to launch the game and run mod installers.</p>
+          <div class="setting-divider"></div>
+          <div class="setting-line setting-line--column">
+            <label for="java-path-input">Custom Java Path</label>
+            <md-outlined-text-field id="java-path-input" style="width: 100%;" placeholder="Leave empty for auto-detect, e.g. C:\Program Files\Java\jdk-21\bin\java.exe"></md-outlined-text-field>
+          </div>
+          <div class="java-actions">
+            <md-filled-button id="java-save-button">Verify &amp; Save</md-filled-button>
+            <md-filled-tonal-button id="java-clear-button">Clear</md-filled-tonal-button>
+          </div>
+          <p class="setting-note" id="java-status" hidden></p>
+          <div class="setting-divider"></div>
+          <div class="setting-section-label">Detected Java Installations</div>
+          <md-list id="java-list" class="java-list"></md-list>
+          <p class="setting-note">Installations are detected from common locations automatically. Click “Use” to make one the default for launching and installing.</p>
         </div>
       </section>
     </main>

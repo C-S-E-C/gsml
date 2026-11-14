@@ -21,13 +21,6 @@
       h1,h2,h3,a,p {
         color: #FFF;
       }
-      button {
-        padding: 10px;
-        margin: 10px;
-        border-radius: 5px;
-        background-color: #053154;
-        font: helvetica;
-      }
       md-filled-tonal-button {
         margin-right: 10px;
       }
@@ -37,10 +30,19 @@
     <img src="./src/assets/logo.png" id="logo" alt="Logo" />
     <h1>GSML</h1>
     <h2>Glow Squid Minecraft Launcher</h2>
-    <h3>Welcome to GSML, Please read and agree to the <a href="https://example.com">lisence</a> to start using GSML</h3>
+    <h3>Welcome to GSML, Please read and agree to the 
+      <a href="javascript:void(0)" onclick="showLicense()">lisence</a>
+      to start using GSML</h3>
     <p>Tip: click on lisence to view it</p>
     <md-filled-tonal-button onclick="window.__TAURI__.core.invoke('set_svar',{key:'StartTimes',value:0}).then(() => { location.pathname = '/'; });">I agree.</md-filled-tonal-button>
     <md-outlined-button onclick="document.getElementById('alert').style.display='block'">I don't agree.</md-outlined-button>
     <p style="color: red;display: none;" id="alert">You must agree to the lisence to use GSML</p>
+    <script type="module">
+      import { openUrl } from '@tauri-apps/plugin-opener';
+      function show_license() {
+        openUrl('https://github.com/C-S-E-C/gsml/blob/main/USER_LICENSE.md');
+      }
+      window.showLicense = show_license;
+    </script>
   </body>
 </html>

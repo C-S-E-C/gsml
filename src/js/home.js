@@ -944,29 +944,29 @@ function setupRemoveAccount() {
 // loader（fabric/forge/neoforge），原版按 type（release/snapshot/old_*），
 // 未知类型回退唱片图标。注意：后端 MinecraftVersion 的 JSON 键是 "type"
 // （serde rename），不是 version_type。
-const verIcon = [null, fabricImg, forgeImg, neoforgeImg];   // 下标 = loader
-const verIcon2 = [releaseImg, snapshotImg, oldImg, oldImg]; // 下标 = type 0-3
+const VER_ICON = [null, fabricImg, forgeImg, neoforgeImg];   // 下标 = loader
+const VER_ICON2 = [releaseImg, snapshotImg, oldImg, oldImg]; // 下标 = type 0-3
 
 function versionIcon(ver) {
-    return verIcon[ver.loader] || verIcon2[ver.type] || musicDiscImg;
+    return VER_ICON[ver.loader] || VER_ICON2[ver.type] || musicDiscImg;
 }
 
 async function setupLaunchMenu() {
-    const LaunchVerSelect = document.getElementById('launch-ver-select');
-    const LaunchBtn = document.getElementById('launch-btn');
-    if (!LaunchVerSelect || !LaunchBtn) {
+    const launchVerSelect = document.getElementById('launch-ver-select');
+    const launchBtn = document.getElementById('launch-btn');
+    if (!launchVerSelect || !launchBtn) {
         return;
     }
 
-    let LocalVersions = [];
+    let localVersions = [];
     try {
-        LocalVersions = await invokeFn('get_local_versions');
+        localVersions = await invokeFn('get_local_versions');
     } catch (error) {
         console.error('Failed to load local versions', error);
     }
 
     // 一次性写入，避免逐条 += 反复重解析。
-    LaunchVerSelect.innerHTML = LocalVersions.map((ver) => `
+    launchVerSelect.innerHTML = localVersions.map((ver) => `
         <md-select-option value="${escapeHtml(ver.name)}">
             <img slot="start" src="${versionIcon(ver)}" class="icon" alt="" />
             <span slot="headline">${escapeHtml(ver.name)}</span>
@@ -976,16 +976,16 @@ async function setupLaunchMenu() {
     // select 字段左侧显示当前选中版本的图标（md-select 原生支持
     // slot="leading-icon"；关闭状态的字段不会渲染选项里的 slot="start"
     // 图标，所以图标要单独同步，选项打开后由菜单自身渲染）。
-    const LaunchVerIcon = document.createElement('img');
-    LaunchVerIcon.slot = 'leading-icon';
-    LaunchVerIcon.alt = '';
-    LaunchVerIcon.hidden = true;
-    LaunchVerSelect.appendChild(LaunchVerIcon);
+    const launchVerIcon = document.createElement('img');
+    launchVerIcon.slot = 'leading-icon';
+    launchVerIcon.alt = '';
+    launchVerIcon.hidden = true;
+    launchVerSelect.appendChild(launchVerIcon);
     const syncLaunchIcon = () => {
-        const cur = LocalVersions.find((ver) => ver.name === LaunchVerSelect.value);
-        LaunchVerIcon.hidden = !cur;
+        const cur = localVersions.find((ver) => ver.name === launchVerSelect.value);
+        launchVerIcon.hidden = !cur;
         if (cur) {
-            LaunchVerIcon.src = versionIcon(cur);
+            launchVerIcon.src = versionIcon(cur);
         }
     };
 
@@ -995,34 +995,285 @@ async function setupLaunchMenu() {
     // (renderRoot 为 undefined，查询返回空数组)，此时立即赋值 value 会把
     // displayText 固定为空 —— 图标正常但字段不显示版本名。所以必须先等
     // 所有选项渲染完成，再赋值并校验。
-    const options = [...LaunchVerSelect.querySelectorAll('md-select-option')];
+    const options = [...launchVerSelect.querySelectorAll('md-select-option')];
     await Promise.all(options.map((opt) => opt.updateComplete));
-    const first = LocalVersions[0]?.name ?? null;
+    const first = localVersions[0]?.name ?? null;
     if (first) {
-        LaunchVerSelect.value = first;
-        await LaunchVerSelect.updateComplete;
-        if (LaunchVerSelect.value !== first || !LaunchVerSelect.displayText) {
+        launchVerSelect.value = first;
+        await launchVerSelect.updateComplete;
+        if (launchVerSelect.value !== first || !launchVerSelect.displayText) {
             // 兜底：重设 value 重新走 selectItem → updateValueAndDisplayText，
             // displayText 此时会实时读到已渲染的 headline 文本。
-            LaunchVerSelect.value = first;
-            await LaunchVerSelect.updateComplete;
+            launchVerSelect.value = first;
+            await launchVerSelect.updateComplete;
         }
     }
-    LaunchBtn.disabled = !first;
+    launchBtn.disabled = !first;
     syncLaunchIcon();
 
-    LaunchVerSelect.addEventListener('change', () => {
-        LaunchBtn.disabled = !LaunchVerSelect.value;
+    launchVerSelect.addEventListener('change', () => {
+        launchBtn.disabled = !launchVerSelect.value;
         syncLaunchIcon();
     });
 
-    // TODO: 启动逻辑待后端提供 launch 命令后接入。
-    LaunchBtn.addEventListener('click', () => {
-        if (LaunchVerSelect.value) {
-            console.warn('launch command not implemented yet:', LaunchVerSelect.value);
+    // 启动 / 停止。
+    launchBtn.addEventListener('click', async () => {
+        if (launchStatus.running) {
+            return;
+        }
+        if (!launchVerSelect.value) {
+            return;
+        }
+        if (selectedAccountId == null) {
+            return;
+        }
+        // 打开进度 dialog（非日志），进入运行态前先禁用按钮。
+        launchRunning(false);
+        launchBtn.disabled = true;
+        openLaunchProgress();
+        try {
+            // 读取设置页保存的自定义 Java（键 'java-path'），空值则走后端自动检测。
+            const savedJava = await invokeFn('get_svar', { key: 'java-path' }).catch(() => null);
+            await invokeFn('launch_game', {
+                versionId: launchVerSelect.value,
+                accountId: selectedAccountId,
+                javaPath: savedJava || null,
+            });
+        } catch (error) {
+            // 不做 close→show：md-dialog 关闭动画进行中立刻 show() 会被收尾的
+            // 关闭动画覆盖，报错弹窗会一闪而过。dialog 已打开时原地切换为错误模式。
+            launchBtn.disabled = false;
+            launchRunning(false);
+            showLaunchError('启动失败', error);
+            console.error('launch failed', error);
+        }
+    });
+
+    // 启动状态事件（launch-status）。启动完成后（running，即 Minecraft 有窗口
+    // 后）关闭进度 dialog，并启用「停止游戏」按钮；game-output 只进环形缓冲，
+    // 供报错时展示最近日志。
+    onPageEvent('launch-status', (payload) => {
+        const { status } = payload;
+        if (status === 'starting') {
+            gameOutputBuffer.length = 0;
+            if (payload.detail) {
+                launchStatus.lastText = payload.detail;
+            }
+            openLaunchProgress();
+        } else if (status === 'running') {
+            // 启动完成：关闭进度 dialog，显示「停止游戏」并保持 Launch 禁用。
+            closeLaunchProgress();
+            launchRunning(true);
+        } else if (status === 'stopped') {
+            closeLaunchProgress();
+            launchRunning(false);
+        } else if (status === 'error') {
+            // 同上：原地切换为错误模式，不做 close→show（关闭动画竞态会让
+            // 报错弹窗一闪而过）。
+            launchRunning(false);
+            showLaunchError(payload.stage === 'crash' ? '游戏异常退出' : '启动失败', payload);
+        }
+    });
+
+    onPageEvent('game-output', (payload) => {
+        if (typeof payload?.line !== 'string' || !payload.line) return;
+        gameOutputBuffer.push(payload.line);
+        if (gameOutputBuffer.length > GAME_OUTPUT_LIMIT) {
+            gameOutputBuffer.splice(0, gameOutputBuffer.length - GAME_OUTPUT_LIMIT);
         }
     });
 }
+// ── 启动状态 ────────────────────────────────────────────────────────────
+// 进展显示改用 md-dialog（home.html 中的 #launch-progress-dialog），
+// 不再内嵌日志控制台。
+const GAME_OUTPUT_LIMIT = 400;
+const gameOutputBuffer = [];
+const launchStatus = { running: false, statusEl: null, lastText: null };
+
+// 打开/更新启动进度 dialog（进度模式：显示进度条 + 状态文字）
+function openLaunchProgress() {
+    const dialog = document.getElementById('launch-progress-dialog');
+    const statusEl = document.getElementById('launch-dialog-status');
+    if (statusEl) {
+        statusEl.textContent = launchStatus.lastText || '正在启动…';
+    }
+    setDialogMode(false); // 进度模式
+    if (dialog && !dialog.open) {
+        void dialog.show();
+    }
+}
+
+// 切换到错误模式：隐藏进度条，展示错误信息 + 「关闭」按钮（需手动确认）。
+// payload 兼容两种形态：结构化 launch-status 载荷
+// { detail, stage?, code?, aliveSecs?, pid?, tail? } 或纯字符串（invoke reject）。
+const LAUNCH_STAGE_LABELS = {
+    resolve: '解析账号/配置',
+    launch: '启动进程',
+    crash: '进程崩溃',
+};
+
+function formatLaunchErrorText(summary, meta, logLines) {
+    const parts = [summary];
+    if (meta) {
+        parts.push(meta.map(([k, v]) => `${k}: ${v}`).join('，'));
+    }
+    if (logLines.length > 0) {
+        parts.push('--- 最近日志 ---', ...logLines);
+    }
+    return parts.join('\n');
+}
+
+function showLaunchError(title, payload) {
+    // 仅当载荷带有结构化字段（detail/stage）时按结构化处理；
+    // 纯字符串（invoke reject 的 Err 文本）或 Error 对象直接取文案。
+    const isStructured = !!payload
+        && typeof payload === 'object'
+        && ('detail' in payload || 'stage' in payload);
+    const summary = isStructured
+        ? (payload.detail || '未知错误')
+        : (payload instanceof Error ? payload.message : String(payload ?? '未知错误'));
+    const stage = isStructured ? payload.stage : null;
+    const code = isStructured ? payload.code : null;
+    const aliveSecs = isStructured ? payload.aliveSecs : null;
+    const pid = isStructured ? payload.pid : null;
+    const tail = isStructured && typeof payload.tail === 'string' ? payload.tail : '';
+
+    setDialogMode(true);
+    const titleEl = document.getElementById('launch-dialog-title');
+    if (titleEl) {
+        titleEl.textContent = title || '启动失败';
+    }
+    const summaryEl = document.getElementById('launch-error-summary');
+    if (summaryEl) {
+        summaryEl.textContent = summary;
+    }
+
+    // 元信息行：只显示有值的项。
+    const meta = [];
+    if (code !== null && code !== undefined) {
+        meta.push(['退出码', code]);
+    }
+    if (aliveSecs !== null && aliveSecs !== undefined) {
+        meta.push(['存活', `${aliveSecs}s`]);
+    }
+    if (pid !== null && pid !== undefined) {
+        meta.push(['PID', pid]);
+    }
+    if (stage && LAUNCH_STAGE_LABELS[stage]) {
+        meta.push(['阶段', LAUNCH_STAGE_LABELS[stage]]);
+    }
+    const metaEl = document.getElementById('launch-error-meta');
+    if (metaEl) {
+        metaEl.hidden = meta.length === 0;
+        metaEl.innerHTML = meta
+            .map(([k, v]) => `<span class="launch-error-chip">${escapeHtml(String(k))}：${escapeHtml(String(v))}</span>`)
+            .join('');
+    }
+
+    // 日志区：优先实时缓冲（崩溃前的最后输出），其次后端附带的 tail。
+    const tailLines = tail ? tail.split(/\r?\n/).filter((l) => l.trim()) : [];
+    const logLines = gameOutputBuffer.length > 0 ? gameOutputBuffer : tailLines;
+    const logEl = document.getElementById('launch-error-log');
+    if (logEl) {
+        logEl.hidden = logLines.length === 0;
+        logEl.textContent = logLines.join('\n');
+    }
+
+    // 日志/摘要提到 Java 时提供直达设置的入口。
+    const javaRelated = /java/i.test(`${summary}\n${logLines.join('\n')}`);
+    const settingsBtn = document.getElementById('launch-error-settings');
+    if (settingsBtn) {
+        settingsBtn.hidden = !javaRelated;
+    }
+
+    // 复制按钮：复制摘要 + 元信息 + 日志全文。
+    const copyBtn = document.getElementById('launch-error-copy');
+    if (copyBtn) {
+        copyBtn.replaceWith(copyBtn.cloneNode(true));
+        const freshCopy = document.getElementById('launch-error-copy');
+        freshCopy.addEventListener('click', async () => {
+            const fullText = formatLaunchErrorText(summary, meta, logLines);
+            try {
+                await navigator.clipboard.writeText(fullText);
+                freshCopy.textContent = '已复制';
+            } catch (err) {
+                console.error('copy launch error failed:', err);
+                freshCopy.textContent = '复制失败';
+            }
+            setTimeout(() => {
+                freshCopy.textContent = '复制日志';
+            }, 1500);
+        });
+    }
+
+    const settingsBtn2 = document.getElementById('launch-error-settings');
+    if (settingsBtn2) {
+        settingsBtn2.onclick = () => {
+            // 先隐藏错误内容，绕过 closeLaunchProgress 的「报错展示中不关闭」保护。
+            const errorEl = document.getElementById('launch-dialog-error');
+            if (errorEl) errorEl.hidden = true;
+            closeLaunchProgress();
+            // 设置页是顶层 shell 的一个 tab；同源 iframe 里调用顶层导航。
+            try {
+                window.parent.sidebar_button('settings');
+            } catch (err) {
+                console.error('navigate to settings failed:', err);
+            }
+        };
+    }
+
+    const dialog = document.getElementById('launch-progress-dialog');
+    if (dialog && !dialog.open) {
+        void dialog.show();
+    }
+}
+
+// mode: false=进度模式（进度条显示、错误区隐藏、无关闭按钮）
+//      true =错误模式（进度条隐藏、错误区显示、有关闭按钮）
+function setDialogMode(errorMode) {
+    const bar = document.getElementById('launch-dialog-bar');
+    if (bar) {
+        bar.hidden = errorMode;
+    }
+    const errorEl = document.getElementById('launch-dialog-error');
+    if (errorEl) {
+        errorEl.hidden = !errorMode;
+    }
+    const close = document.getElementById('launch-dialog-close');
+    if (close) {
+        close.hidden = !errorMode;
+    }
+    const statusEl = document.getElementById('launch-dialog-status');
+    if (statusEl) {
+        statusEl.hidden = errorMode;
+    }
+}
+
+function closeLaunchProgress() {
+    const dialog = document.getElementById('launch-progress-dialog');
+    // 报错信息展示中：不自动关闭（等用户点「关闭」），避免后续
+    // stopped/running 事件把错误弹窗冲掉。
+    const errorEl = document.getElementById('launch-dialog-error');
+    if (errorEl && !errorEl.hidden && dialog?.open) {
+        return;
+    }
+    if (dialog?.open) {
+        void dialog.close();
+    }
+}
+
+function launchRunning(running) {
+    launchStatus.running = running;
+    const btn = document.getElementById('launch-btn');
+    if (btn) {
+        btn.disabled = running; // 运行中禁点；停止靠「停止游戏」按钮
+        const icon = btn.querySelector('md-icon') || null;
+        if (icon) {
+            icon.textContent = running ? 'stop_circle' : 'play_arrow';
+        }
+    }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {

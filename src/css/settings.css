@@ -280,3 +280,63 @@ body {
   tab-size: 1;
   line-height: 1;
 }
+
+/* ── Java 设置区（view-java）──────────────────────────────── */
+.setting-line--column {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.java-actions {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+
+#java-status {
+  color: var(--md-sys-color-primary);
+}
+
+#java-status.java-status--error {
+  color: var(--md-sys-color-error);
+  white-space: pre-wrap;
+}
+
+.java-list {
+  background: transparent;
+  padding: 0;
+}
+
+.java-list md-list-item.java-item {
+  border-radius: 12px;
+  background-color: var(--md-sys-color-surface-container-lowest);
+  margin-bottom: 10px;
+  --md-list-container-color: transparent;
+}
+
+.java-list md-list-item.java-item--active {
+  outline: 1px solid var(--md-sys-color-primary);
+}
+
+.java-item .java-item-path {
+  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.java-item .java-item-active {
+  color: var(--md-sys-color-primary);
+}
+
+.java-item .java-use {
+  --md-filled-tonal-button-container-height: 36px;
+  font-size: 0.82rem;
+}
+
+.java-item-loading {
+  color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+  font-size: 0.9rem;
+  padding: 8px 0;
+}

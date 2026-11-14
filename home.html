@@ -43,8 +43,7 @@
 
         <div id="add-account-microsoft" class="add-account-panel" hidden>
           <p style="margin:0;line-height:1.6;">
-            点击 Add 后将打开系统浏览器完成微软登录，登录结果通过
-            glow-squid://ms-auth deeplink 回调返回，无需手动输入代码。
+            点击 Add 后将打开系统浏览器完成微软登录
           </p>
           <!-- 登录进度：Rust 每一步广播 ms-login-progress 事件，home.js 更新 -->
           <div class="ms-login-progress" id="ms-login-progress" hidden>
@@ -94,6 +93,31 @@
         <md-branded-fab size="large" label="Launch" id="launch-btn"></md-branded-fab>
       </div>
     </main>
+
+    <!-- ── Launch progress / error dialog (启动进度 / 报错) ──
+         点击启动后打开：indeterminate 进度条 + 状态文字；启动出错或崩溃时切为
+         错误模式：一行摘要 + 元信息（退出码/存活/PID）+ 可滚动的最近日志，
+         支持一键复制日志、跳转 Java 设置。Minecraft 窗口出现（收到 running
+         事件）后自动隐藏。 -->
+    <md-dialog type="modal" id="launch-progress-dialog">
+      <div slot="headline" id="launch-dialog-title">正在启动游戏</div>
+      <div slot="content">
+        <md-linear-progress id="launch-dialog-bar" indeterminate></md-linear-progress>
+        <p class="launch-dialog-status" id="launch-dialog-status">正在准备…</p>
+        <div class="launch-dialog-error" id="launch-dialog-error" hidden>
+          <p class="launch-error-summary" id="launch-error-summary"></p>
+          <div class="launch-error-meta" id="launch-error-meta" hidden></div>
+          <pre class="launch-error-log" id="launch-error-log"></pre>
+          <div class="launch-error-actions">
+            <md-filled-tonal-button id="launch-error-copy">复制日志</md-filled-tonal-button>
+            <md-outlined-button id="launch-error-settings" hidden>打开 Java 设置</md-outlined-button>
+          </div>
+        </div>
+      </div>
+      <div slot="actions">
+        <md-filled-tonal-button slot="cancel" id="launch-dialog-close" hidden>关闭</md-filled-tonal-button>
+      </div>
+    </md-dialog>
     <script type="module" src="./src/js/home.js"></script>
   </body>
 </html>

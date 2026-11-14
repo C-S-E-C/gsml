@@ -365,6 +365,102 @@ body {
     font-weight: bolder;
 }
 
+/* ── Launch status (由 home.js 动态创建) ───────────────────
+   .start-mc 是 fixed 底栏，状态提示行放在其上方右侧。 */
+.launch-status {
+    position: fixed;
+    bottom: 84px;
+    right: 20px;
+    left: 260px;
+    z-index: 20;
+    font-size: 0.9rem;
+    color: var(--md-sys-color-on-surface-variant);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    line-height: 1.4;
+}
+
+/* 「停止游戏」按钮贴近 Launch FAB */
+#launch-stop {
+    margin-left: 10px;
+    --md-filled-tonal-button-container-color: var(--md-error-tonal-button-container-color);
+    --md-filled-tonal-button-label-text-color: var(--md-sys-color-on-error-container);
+    font-weight: bolder;
+}
+
+/* 启动进度 dialog 文案 */
+.launch-dialog-status {
+    margin: 16px 0 0;
+    line-height: 1.6;
+    color: var(--md-sys-color-on-surface);
+}
+
+/* 启动报错：中性容器，红只出现在摘要文字上 */
+.launch-dialog-error {
+    margin: 16px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 340px;
+    box-sizing: border-box;
+}
+
+.launch-error-summary {
+    margin: 0;
+    color: var(--md-sys-color-error);
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.launch-error-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.launch-error-chip {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background-color: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+    font-size: 0.75rem;
+    line-height: 1.6;
+}
+
+.launch-error-log {
+    margin: 0;
+    padding: 10px 14px;
+    max-height: 200px;
+    overflow: auto;
+    border-radius: var(--md-sys-shape-corner-medium, 12px);
+    background-color: var(--md-sys-color-surface-container-highest);
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+    font-family: var(--md-ref-typeface-plain, var(--md-ref-typeface-brand)), monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.launch-error-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* 报错模式需要足够宽度展示日志 */
+#launch-progress-dialog [slot="content"] {
+    min-width: 420px;
+    max-width: 560px;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

@@ -6,7 +6,7 @@ import { isRootPage, invokeFn, listenFn } from './main.js';
 import { initAutoUpdate } from './updater.js';
 import logoImg from '../assets/logo.png';
 
-const thesquidsays = [
+const THE_SQUID_SAYS = [
     "Ayo, stop touching me!",
     "I'm not a toy!",
     "Leave me alone!",
@@ -26,7 +26,12 @@ function sidebar_button(name) {
 // 里、自己在 iframe 内 listen 收不到。这里在顶层（常驻文档，不随换 tab
 // 重载）统一订阅，再用 postMessage 转发给当前 iframe 页面；页面侧通过
 // main.js 的 onPageEvent() 接收。
-const RELAYED_EVENTS = ['install-progress', 'ms-login-progress'];
+const RELAYED_EVENTS = [
+    'install-progress',
+    'ms-login-progress',
+    'launch-status',
+    'game-output',
+];
 
 async function setupEventRelay() {
     for (const name of RELAYED_EVENTS) {
@@ -59,9 +64,9 @@ function setupWindowControls() {
     }
 }
 
-var logoclickedtimes = 0;
+var logoClickedTimes = 0;
 function logoclick() {
-    if (logoclickedtimes == thesquidsays.length) {
+    if (logoClickedTimes == THE_SQUID_SAYS.length) {
         document.getElementById("logo").src = logoImg;
         document.getElementById("js-css").innerHTML += `:root {
            --root-bgcolor: #320000;
@@ -69,11 +74,11 @@ function logoclick() {
            --bg-color: #4d0000;
         }`;
         alert("YOU PISSED ME OFF!");
-        logoclickedtimes = 0;
+        logoClickedTimes = 0;
     } else {
-        alert("The squid:\n" + thesquidsays[logoclickedtimes]);
+        alert("The squid:\n" + THE_SQUID_SAYS[logoClickedTimes]);
     }
-    logoclickedtimes++;
+    logoClickedTimes++;
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
