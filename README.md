@@ -4,8 +4,9 @@
 
 [![build](https://github.com/C-S-E-C/gsml/actions/workflows/build.yml/badge.svg)](https://github.com/C-S-E-C/gsml/actions/workflows/build.yml)
 ---
-![home](screenshot/home.png)
-![download](screenshot/download.png)
+## screenshots
+![home](screenshots/home.png)
+![download](screenshots/download.png)
 
 ## Third-Party Components
 This project redistributes the following third-party components. Each license is
