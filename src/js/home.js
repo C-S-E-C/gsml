@@ -21,6 +21,8 @@ import snapshotImg from '../assets/dirt.png';
 import oldImg from '../assets/cobblestone.png';
 import musicDiscImg from '../assets/music_disc_11.png';
 
+import { openUrl } from '@tauri-apps/plugin-opener';
+
 // 1×1 transparent GIF placeholder (real skin fetching is not implemented yet).
 const TRANSPARENT_GIF =
     'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -964,7 +966,10 @@ async function setupLaunchMenu() {
     } catch (error) {
         console.error('Failed to load local versions', error);
     }
-
+    localVersions.push(
+        {name: 'Minecraft Bedrock', official_name: 'mcbe', loader: 0, type: 0}
+    );
+    
     // 一次性写入，避免逐条 += 反复重解析。
     launchVerSelect.innerHTML = localVersions.map((ver) => `
         <md-select-option value="${escapeHtml(ver.name)}">
@@ -1041,31 +1046,36 @@ async function setupLaunchMenu() {
         if (selectedAccountId == null) {
             return;
         }
-        // 打开进度 dialog（非日志），进入运行态前先置为不可点。
-        launchRunning(false);
-        setLaunchEnabled(false);
-        openLaunchProgress();
         const versionId = launchVerSelect.value;
-        try {
-            // Java/内存优先级：版本覆盖 > 设置页全局 java-path > 后端按版本
-            // JSON 的 javaVersion 自动挑选；内存未设置则用后端默认值。
-            const [perVersion, globalJava] = await Promise.all([
-                readVersionSettings(versionId),
-                invokeFn('get_svar', { key: 'java-path' }).catch(() => null),
-            ]);
-            await invokeFn('launch_game', {
-                versionId,
-                accountId: selectedAccountId,
-                javaPath: perVersion.javaPath
-                    || (typeof globalJava === 'string' ? globalJava : null),
-                memoryMb: perVersion.memoryMb || undefined,
-            });
-        } catch (error) {
-            // 不做 close→show：md-dialog 关闭动画进行中立刻 show() 会被收尾的
-            // 关闭动画覆盖，报错弹窗会一闪而过。dialog 已打开时原地切换为错误模式。
+        console.log('launch', versionId);
+        if (versionId === 'Minecraft Bedrock') {
+            await openUrl('minecraft://');
+        } else {
+            // 打开进度 dialog（非日志），进入运行态前先置为不可点。
             launchRunning(false);
-            showLaunchError('启动失败', error);
-            console.error('launch failed', error);
+            setLaunchEnabled(false);
+            openLaunchProgress();
+            try {
+                // Java/内存优先级：版本覆盖 > 设置页全局 java-path > 后端按版本
+                // JSON 的 javaVersion 自动挑选；内存未设置则用后端默认值。
+                const [perVersion, globalJava] = await Promise.all([
+                    readVersionSettings(versionId),
+                    invokeFn('get_svar', { key: 'java-path' }).catch(() => null),
+                ]);
+                await invokeFn('launch_game', {
+                    versionId,
+                    accountId: selectedAccountId,
+                    javaPath: perVersion.javaPath
+                        || (typeof globalJava === 'string' ? globalJava : null),
+                    memoryMb: perVersion.memoryMb || undefined,
+                });
+            } catch (error) {
+                // 不做 close→show：md-dialog 关闭动画进行中立刻 show() 会被收尾的
+                // 关闭动画覆盖，报错弹窗会一闪而过。dialog 已打开时原地切换为错误模式。
+                launchRunning(false);
+                showLaunchError('启动失败', error);
+                console.error('launch failed', error);
+            }
         }
     });
 

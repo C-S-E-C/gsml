@@ -29,6 +29,14 @@
         }
       ]
     },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "minecraft://"
+        }
+      ]
+    },
     "deep-link:default"
   ]
 }
