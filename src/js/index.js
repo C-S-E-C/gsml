@@ -31,6 +31,9 @@ const RELAYED_EVENTS = [
     'ms-login-progress',
     'launch-status',
     'game-output',
+    // 设置页的「Check for Updates」进度条：Rust 发 update-progress，
+    // 漏了这条转发会让 iframe 里的进度条永远停在 0。
+    'update-progress',
 ];
 
 async function setupEventRelay() {
