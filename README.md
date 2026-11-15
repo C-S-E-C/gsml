@@ -6,6 +6,7 @@
 ---
 
 ## Third-Party Components
-
+![home](screenshot/home.png)
+![download](screenshot/download.png)
 This project redistributes the following third-party components. Each license is
 reproduced in full in [`THIRD_PARTY_LICENSES`](public/THIRD_PARTY_LICENSES.html) file.
