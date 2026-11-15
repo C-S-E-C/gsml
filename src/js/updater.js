@@ -62,7 +62,7 @@ export function onUpdateProgress(handler) {
 /** 下载上一次 check 选中的 asset 到临时目录，返回落盘路径 */
 export async function downloadUpdate(onProgress = () => {}) {
     if (!lastCheck || !lastCheck.asset_url) {
-        throw new Error('请先检查更新');
+        throw new Error('Check for updates first');
     }
     const unlisten = await onUpdateProgress(onProgress);
     try {
@@ -166,15 +166,15 @@ export async function initAutoUpdate() {
                 try {
                     await downloadAndApply(({ label, done, total }) => {
                         const pct = total > 0 ? Math.round((done * 100) / total) : 0;
-                        text.textContent = label || '下载中'+pct+'%';
+                        text.textContent = label || ('Downloading ' + pct + '%');
                     });
-                    text.textContent = '更新完成，即将重启…';
+                    text.textContent = 'Update complete; restarting…';
                 } catch (err) {
                     console.error('auto update failed:', err);
-                    text.textContent = `更新失败：${err}`;
+                    text.textContent = `Update failed: ${err}`;
                     // 失败不关闭，允许用户看一眼再手动忽略
                     const skip = document.getElementById('gsml-update-skip');
-                    if (skip) { skip.disabled = false; skip.textContent = '关闭'; }
+                    if (skip) { skip.disabled = false; skip.textContent = 'Close'; }
                 }
             },
         });

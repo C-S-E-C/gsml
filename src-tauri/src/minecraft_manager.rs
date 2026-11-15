@@ -52,7 +52,7 @@ static INSTALLING: AtomicBool = AtomicBool::new(false);
 
 fn check_cancel() -> Result<(), String> {
     if CANCEL.load(Ordering::Relaxed) {
-        Err("已取消安装".into())
+        Err("Installation cancelled".into())
     } else {
         Ok(())
     }
@@ -144,19 +144,19 @@ fn fmt_bytes(n: u64) -> String {
 
 async fn fetch_json(url: &str) -> Result<Value, String> {
     let response = http_client().get(url).send().await
-        .map_err(|e| format!("请求失败 {url}: {e}"))?;
+        .map_err(|e| format!("Request failed {url}: {e}"))?;
     let resp = response.error_for_status().map_err(|e| format!("{url}: {e}"))?;
     resp.json::<Value>().await
-        .map_err(|e| format!("解析 JSON 失败 {url}: {e}"))
+        .map_err(|e| format!("Failed to parse JSON {url}: {e}"))
 }
 
 async fn fetch_text(url: &str) -> Result<String, String> {
     let response = http_client().get(url).send().await
-        .map_err(|e| format!("请求失败 {url}: {e}"))?;
+        .map_err(|e| format!("Request failed {url}: {e}"))?;
     response.error_for_status()
         .map_err(|e| format!("{url}: {e}"))?
         .text().await
-        .map_err(|e| format!("读取响应失败 {url}: {e}"))
+        .map_err(|e| format!("Failed to read response {url}: {e}"))
 }
 
 /// 下载到指定路径；dest 已存在且尺寸匹配（尺寸未知时存在即算）则跳过。
@@ -177,25 +177,25 @@ async fn download_file(
         fs::create_dir_all(parent).map_err(io_err)?;
     }
     let response = client.get(url).send().await
-        .map_err(|e| format!("下载失败 {url}: {e}"))?;
+        .map_err(|e| format!("Download failed {url}: {e}"))?;
     let mut resp = response.error_for_status().map_err(|e| format!("{url}: {e}"))?;
     let mut file = fs::File::create(dest).map_err(io_err)?;
     let mut written: u64 = 0;
     while let Some(chunk) = resp.chunk().await
-        .map_err(|e| format!("下载中断 {url}: {e}"))?
+        .map_err(|e| format!("Download interrupted {url}: {e}"))?
     {
         check_cancel()?;
         file.write_all(&chunk).map_err(io_err)?;
         written += chunk.len() as u64;
         if let Some(p) = prog {
             p.done_bytes.fetch_add(chunk.len() as u64, Ordering::Relaxed);
-            p.emit(false, "下载中…");
+            p.emit(false, "Downloading…");
         }
     }
     if let Some(size) = expected_size {
         if size > 0 && written != size {
             let _ = fs::remove_file(dest);
-            return Err(format!("下载不完整 {url}（{written}/{size} 字节）"));
+            return Err(format!("Incomplete download {url} ({written}/{size} bytes)"));
         }
     }
     Ok(())
@@ -259,9 +259,9 @@ async fn download_all(
         last: Mutex::new((Instant::now(), 0, 0)),
     });
     let head = if bytes_total > 0 {
-        format!("共 {total} 个文件 · 约 {}", fmt_bytes(bytes_total))
+        format!("{total} files · about {}", fmt_bytes(bytes_total))
     } else {
-        format!("共 {total} 个文件…")
+        format!("{total} files…")
     };
     progress.emit(true, &head);
 
@@ -290,19 +290,19 @@ async fn download_all(
                     failures.lock().unwrap().push(format!("{url}: {e}"));
                 }
                 progress.done_files.fetch_add(1, Ordering::Relaxed);
-                progress.emit(false, "下载中…");
+                progress.emit(false, "Downloading…");
             }
         }));
     }
     for h in handles {
-        h.await.map_err(|e| format!("下载任务异常退出: {e}"))?;
+        h.await.map_err(|e| format!("Download task aborted: {e}"))?;
     }
     check_cancel()?;
     let fails = failures.lock().unwrap();
     if !fails.is_empty() {
-        return Err(format!("{} 个文件下载失败，首个错误：{}", fails.len(), fails[0]));
+        return Err(format!("{} file(s) failed to download; first error: {}", fails.len(), fails[0]));
     }
-    progress.emit(true, "下载完成");
+    progress.emit(true, "Download complete");
     Ok(())
 }
 
@@ -318,7 +318,7 @@ async fn download_with_progress(
         fs::create_dir_all(parent).map_err(io_err)?;
     }
     let response = BIG_CLIENT.get(url).send().await
-        .map_err(|e| format!("下载失败 {url}: {e}"))?;
+        .map_err(|e| format!("Download failed {url}: {e}"))?;
     let mut resp = response.error_for_status().map_err(|e| format!("{url}: {e}"))?;
     let total = resp.content_length().unwrap_or(0);
     let mut file = fs::File::create(dest).map_err(io_err)?;
@@ -326,7 +326,7 @@ async fn download_with_progress(
     let mut last_bytes: u64 = 0;
     let mut last_time = Instant::now();
     while let Some(chunk) = resp.chunk().await
-        .map_err(|e| format!("下载中断 {url}: {e}"))?
+        .map_err(|e| format!("Download interrupted {url}: {e}"))?
     {
         check_cancel()?;
         file.write_all(&chunk).map_err(io_err)?;
@@ -340,11 +340,11 @@ async fn download_with_progress(
             last_time = now;
             emit_install_full(
                 app, pname, stage, written, total.max(1),
-                written, total, speed as u64, "下载中…",
+                written, total, speed as u64, "Downloading…",
             );
         }
     }
-    emit_install_full(app, pname, stage, written, total.max(1), written, total, 0, "下载完成");
+    emit_install_full(app, pname, stage, written, total.max(1), written, total, 0, "Download complete");
     Ok(())
 }
 
@@ -352,15 +352,15 @@ async fn download_with_progress(
 
 async fn find_vanilla_json_url(game_version: &str) -> Result<String, String> {
     let manifest = fetch_json(&crate::download_source::manifest_url()).await?;
-    let arr = manifest["versions"].as_array().ok_or("官方清单格式异常")?;
+    let arr = manifest["versions"].as_array().ok_or("Unexpected manifest format")?;
     for v in arr {
         if v["id"].as_str() == Some(game_version) {
             let url = v["url"].as_str()
-                .ok_or_else(|| format!("版本 {game_version} 缺少下载地址"))?;
+                .ok_or_else(|| format!("Version {game_version} has no download URL"))?;
             return Ok(crate::download_source::rewrite(url));
         }
     }
-    Err(format!("官方清单中不存在版本 {game_version}"))
+    Err(format!("Version {game_version} not found in the manifest"))
 }
 
 /// Mojang rules 过滤：os 缺省 = 全平台；allow/disallow 依次生效
@@ -406,9 +406,9 @@ async fn ensure_vanilla_base(app: &AppHandle, game_version: &str) -> Result<Valu
     let json_path = vdir.join(format!("{game_version}.json"));
     let json: Value = if json_path.is_file() {
         let text = fs::read_to_string(&json_path).map_err(io_err)?;
-        serde_json::from_str(&text).map_err(|e| format!("版本 JSON 解析失败 {game_version}: {e}"))?
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse version JSON {game_version}: {e}"))?
     } else {
-        emit_install(app, game_version, "json", 0, 1, "下载版本 JSON…");
+        emit_install(app, game_version, "json", 0, 1, "Downloading version JSON…");
         let url = find_vanilla_json_url(game_version).await?;
         let json = fetch_json(&url).await?;
         fs::create_dir_all(&vdir).map_err(io_err)?;
@@ -421,7 +421,7 @@ async fn ensure_vanilla_base(app: &AppHandle, game_version: &str) -> Result<Valu
     // 2) 客户端 jar（约 25MB，字节级进度）
     let jar_path = vdir.join(format!("{game_version}.jar"));
     let client_url = json["downloads"]["client"]["url"].as_str()
-        .ok_or("版本 JSON 缺少 client 下载地址")?;
+        .ok_or("Version JSON has no client download URL")?;
     let client_url = crate::download_source::rewrite(client_url);
     let client_size = json["downloads"]["client"]["size"].as_u64().unwrap_or(0);
     let cur = fs::metadata(&jar_path).map(|m| m.len()).unwrap_or(0);
@@ -431,7 +431,7 @@ async fn ensure_vanilla_base(app: &AppHandle, game_version: &str) -> Result<Valu
     check_cancel()?;
 
     // 3) 依赖库 + natives
-    let libs = json["libraries"].as_array().ok_or("版本 JSON 缺少 libraries")?;
+    let libs = json["libraries"].as_array().ok_or("Version JSON has no libraries")?;
     install_libraries(app, game_version, libs).await?;
     extract_natives(app, game_version, &vdir, libs).await?;
     check_cancel()?;
@@ -489,7 +489,7 @@ async fn extract_natives(app: &AppHandle, pname: &str, vdir: &Path, libs: &[Valu
     }
     fs::create_dir_all(&natives_dir).map_err(io_err)?;
     let total = jars.len() as u64;
-    emit_install(app, pname, "natives", 0, total, "下载并解压 natives…");
+    emit_install(app, pname, "natives", 0, total, "Downloading and extracting natives…");
     let client = http_client();
     for (i, (url, name)) in jars.into_iter().enumerate() {
         check_cancel()?;
@@ -497,14 +497,14 @@ async fn extract_natives(app: &AppHandle, pname: &str, vdir: &Path, libs: &[Valu
         download_file(&client, &url, &tmp, None, None).await?;
         extract_dlls(&tmp, &natives_dir)?;
         let _ = fs::remove_file(&tmp);
-        emit_install(app, pname, "natives", (i + 1) as u64, total, "下载并解压 natives…");
+        emit_install(app, pname, "natives", (i + 1) as u64, total, "Downloading and extracting natives…");
     }
     Ok(())
 }
 
 fn extract_dlls(jar: &Path, out_dir: &Path) -> Result<(), String> {
     let file = fs::File::open(jar).map_err(io_err)?;
-    let mut archive = ZipArchive::new(file).map_err(|e| format!("读取 natives jar 失败: {e}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|e| format!("Failed to read natives jar: {e}"))?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let Some(rel) = entry.enclosed_name() else { continue };
@@ -524,13 +524,13 @@ async fn install_assets(app: &AppHandle, game_version: &str, json: &Value) -> Re
     let Some(index) = json["assetIndex"].as_object() else {
         return Ok(()); // 个别老版本没有 assetIndex
     };
-    let index_url = index["url"].as_str().ok_or("assetIndex 缺少 url")?;
-    let index_id = index["id"].as_str().ok_or("assetIndex 缺少 id")?;
+    let index_url = index["url"].as_str().ok_or("assetIndex is missing url")?;
+    let index_id = index["id"].as_str().ok_or("assetIndex is missing id")?;
     let root = get_minecraft_dir()?;
     let idx_path = root.join("assets").join("indexes").join(format!("{index_id}.json"));
     let index_json: Value = if idx_path.is_file() {
         let text = fs::read_to_string(&idx_path).map_err(io_err)?;
-        serde_json::from_str(&text).map_err(|e| format!("资源索引解析失败: {e}"))?
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse asset index: {e}"))?
     } else {
         let data = fetch_json(&crate::download_source::rewrite(index_url)).await?;
         fs::create_dir_all(idx_path.parent().unwrap()).map_err(io_err)?;
@@ -538,7 +538,7 @@ async fn install_assets(app: &AppHandle, game_version: &str, json: &Value) -> Re
         fs::write(&idx_path, pretty).map_err(io_err)?;
         data
     };
-    let objects = index_json["objects"].as_object().ok_or("资源索引缺少 objects")?;
+    let objects = index_json["objects"].as_object().ok_or("Asset index has no objects")?;
     let mut seen: HashSet<&str> = HashSet::new();
     let mut items: Vec<(String, PathBuf, Option<u64>)> = Vec::new();
     for meta in objects.values() {
@@ -547,7 +547,7 @@ async fn install_assets(app: &AppHandle, game_version: &str, json: &Value) -> Re
             continue; // 多个逻辑文件共用同一 hash
         }
         let size = meta["size"].as_u64().unwrap_or(0);
-        let h2 = hash.get(0..2).ok_or("资源索引 hash 非法")?;
+        let h2 = hash.get(0..2).ok_or("Invalid asset hash")?;
         let dest = root.join("assets").join("objects").join(h2).join(hash);
         if size > 0 && fs::metadata(&dest).map(|m| m.len()).unwrap_or(0) == size {
             continue;
@@ -562,7 +562,7 @@ async fn install_assets(app: &AppHandle, game_version: &str, json: &Value) -> Re
 
 async fn install_vanilla(app: &AppHandle, game_version: &str) -> Result<MinecraftVersion, String> {
     ensure_vanilla_base(app, game_version).await?;
-    emit_install(app, game_version, "done", 1, 1, "安装完成");
+    emit_install(app, game_version, "done", 1, 1, "Installation complete");
     Ok(MinecraftVersion {
         name: game_version.to_string(),
         official_name: game_version.to_string(),
@@ -584,7 +584,7 @@ async fn install_fabric(
     // 2) fabric profile JSON
     let url = format!("https://meta.fabricmc.net/v2/versions/loader/{game_version}/{loader_version}/profile/json");
     let profile = fetch_json(&url).await
-        .map_err(|e| format!("获取 Fabric profile 失败（版本组合可能不存在）: {e}"))?;
+        .map_err(|e| format!("Failed to fetch Fabric profile (the version combination may not exist): {e}"))?;
     let root = get_minecraft_dir()?;
     let vdir = root.join("versions").join(&id);
     fs::create_dir_all(&vdir).map_err(io_err)?;
@@ -594,7 +594,7 @@ async fn install_fabric(
     // 3) fabric 依赖库（maven.fabricmc.net）
     let libs = profile["libraries"].as_array().cloned().unwrap_or_default();
     install_maven_libraries(app, &id, &libs).await?;
-    emit_install(app, &id, "done", 1, 1, "安装完成");
+    emit_install(app, &id, "done", 1, 1, "Installation complete");
     Ok(MinecraftVersion {
         name: id,
         official_name: game_version.to_string(),
@@ -659,7 +659,7 @@ async fn install_installer_based(
 
     // 2) 已装过 → 直接返回（只补基底资源）
     if vdir.join(format!("{version_id}.json")).is_file() {
-        emit_install(app, version_id, "done", 1, 1, "已安装，资源已就绪");
+        emit_install(app, version_id, "done", 1, 1, "Already installed; assets are ready");
         return Ok(MinecraftVersion {
             name: version_id.to_string(),
             official_name: game_version.to_string(),
@@ -673,18 +673,18 @@ async fn install_installer_based(
 
     // 4) 下载官方安装器
     let installer = std::env::temp_dir().join(format!("gsml-{version_id}-installer.jar"));
-    emit_install(app, version_id, "installer", 0, 1, "下载官方安装器…");
+    emit_install(app, version_id, "installer", 0, 1, "Downloading the official installer…");
     download_with_progress(app, version_id, "installer", installer_url, &installer).await?;
     check_cancel()?;
 
     // 5) 运行安装器（可能要几分钟，阻塞等退出）
-    emit_install(app, version_id, "installer", 0, 1, "正在运行官方安装器（可能需要几分钟）…");
+    emit_install(app, version_id, "installer", 0, 1, "Running the official installer (may take a few minutes)…");
     let before = dir_names(&versions_dir);
     let java_c = java.clone();
     let installer_c = installer.clone();
     let mc_dir = root.clone();
     let run = tauri::async_runtime::spawn_blocking(move || run_installer(&java_c, &installer_c, &mc_dir));
-    run.await.map_err(|e| format!("安装器任务异常退出: {e}"))??;
+    run.await.map_err(|e| format!("Installer task aborted: {e}"))??;
     check_cancel()?;
 
     // 6) 探测安装器新建的版本目录（forge/neoforge 命名各有差异，不硬编码）
@@ -694,8 +694,8 @@ async fn install_installer_based(
         .collect();
     new_dirs.sort();
     let picked = new_dirs.into_iter().next()
-        .ok_or("安装器未创建新版本目录（可能已安装或运行失败）")?;
-    emit_install(app, &picked, "done", 1, 1, "安装完成");
+        .ok_or("The installer did not create a new version directory (already installed or failed)")?;
+    emit_install(app, &picked, "done", 1, 1, "Installation complete");
     Ok(MinecraftVersion {
         name: picked,
         official_name: game_version.to_string(),
@@ -728,7 +728,7 @@ fn run_installer(java: &Path, installer: &Path, mc_dir: &Path) -> Result<(), Str
     crate::proc_util::hide_console(&mut cmd);
     let out = cmd
         .output()
-        .map_err(|e| format!("无法启动 Java（{java:?}）: {e}"))?;
+        .map_err(|e| format!("Failed to start Java ({java:?}): {e}"))?;
     if !out.status.success() {
         let mut msg = String::from_utf8_lossy(&out.stderr).to_string();
         if msg.len() < 200 {
@@ -774,7 +774,7 @@ async fn install_neoforge(
     });
     if let Some(id) = existing {
         ensure_vanilla_base(app, game_version).await?;
-        emit_install(app, &id, "done", 1, 1, "已安装，资源已就绪");
+        emit_install(app, &id, "done", 1, 1, "Already installed; assets are ready");
         return Ok(MinecraftVersion {
             name: id,
             official_name: game_version.to_string(),
@@ -798,7 +798,7 @@ pub(crate) fn find_java(explicit: Option<&str>) -> Result<PathBuf, String> {
         if exe.is_file() {
             return Ok(exe);
         }
-        return Err(format!("指定的 Java 路径不存在: {p}"));
+        return Err(format!("Specified Java path does not exist: {p}"));
     }
     if let Ok(home) = std::env::var("JAVA_HOME") {
         let exe = PathBuf::from(home).join("bin").join(java_exe());
@@ -815,7 +815,7 @@ pub(crate) fn find_java(explicit: Option<&str>) -> Result<PathBuf, String> {
     {
         return Ok(PathBuf::from("java"));
     }
-    Err("未找到 Java：Forge/NeoForge 安装需要 Java 17+，请先安装 Java 或在调用时传 javaPath".into())
+    Err("Java not found: installing Forge/NeoForge needs Java 17+; install Java or pass javaPath".into())
 }
 
 #[cfg(windows)]
@@ -881,21 +881,21 @@ pub async fn list_remote_versions(
     match loader {
         0 => list_vanilla().await,
         1 => {
-            let gv = game_version.ok_or("loader=1 需要 gameVersion（目标 MC 版本）")?;
+            let gv = game_version.ok_or("loader=1 requires gameVersion (the target MC version)")?;
             list_fabric_loaders(&gv).await
         }
         2 => list_forge_builds(game_version.as_deref()).await,
         3 => {
-            let gv = game_version.ok_or("loader=3 需要 gameVersion（目标 MC 版本）")?;
+            let gv = game_version.ok_or("loader=3 requires gameVersion (the target MC version)")?;
             list_neoforge_builds(&gv).await
         }
-        _ => Err(format!("未知 loader: {loader}（0 vanilla / 1 fabric / 2 forge / 3 neoforge）")),
+        _ => Err(format!("Unknown loader: {loader} (0 vanilla / 1 fabric / 2 forge / 3 neoforge)")),
     }
 }
 
 async fn list_vanilla() -> Result<Vec<MinecraftVersion>, String> {
     let manifest = fetch_json(&crate::download_source::manifest_url()).await?;
-    let arr = manifest["versions"].as_array().ok_or("官方清单格式异常")?;
+    let arr = manifest["versions"].as_array().ok_or("Unexpected manifest format")?;
     Ok(arr.iter().filter_map(|v| {
         let id = v["id"].as_str()?.to_string();
         let t = mc_type_u8(v["type"].as_str());
@@ -906,8 +906,8 @@ async fn list_vanilla() -> Result<Vec<MinecraftVersion>, String> {
 async fn list_fabric_loaders(game_version: &str) -> Result<Vec<MinecraftVersion>, String> {
     let url = format!("https://meta.fabricmc.net/v2/versions/loader/{game_version}");
     let data = fetch_json(&url).await
-        .map_err(|e| format!("查询 Fabric 加载器失败（该 MC 版本可能不受支持）: {e}"))?;
-    let arr = data.as_array().ok_or("Fabric meta 格式异常")?;
+        .map_err(|e| format!("Failed to query Fabric loaders (this MC version may be unsupported): {e}"))?;
+    let arr = data.as_array().ok_or("Unexpected Fabric meta format")?;
     Ok(arr.iter().filter_map(|e| {
         let lv = e["loader"]["version"].as_str()?.to_string();
         let stable = e["loader"]["stable"].as_bool().unwrap_or(true);
@@ -939,11 +939,11 @@ async fn list_forge_builds(game_version: Option<&str>) -> Result<Vec<MinecraftVe
 async fn list_neoforge_builds(game_version: &str) -> Result<Vec<MinecraftVersion>, String> {
     // NeoForge 版本号跟 MC 前缀对应：MC 1.21.1 -> neoforge 21.1.x
     let short = game_version.strip_prefix("1.")
-        .ok_or_else(|| format!("无法从 MC 版本 {game_version} 推导 NeoForge 前缀"))?;
+        .ok_or_else(|| format!("Cannot derive the NeoForge prefix from MC version {game_version}"))?;
     let prefix = format!("{short}.");
     let url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
-    let data = fetch_json(url).await.map_err(|e| format!("查询 NeoForge 失败: {e}"))?;
-    let arr = data["versions"].as_array().ok_or("NeoForge API 格式异常")?;
+    let data = fetch_json(url).await.map_err(|e| format!("Failed to query NeoForge: {e}"))?;
+    let arr = data["versions"].as_array().ok_or("Unexpected NeoForge API format")?;
     let mut out: Vec<MinecraftVersion> = arr.iter().filter_map(|v| {
         let s = v.as_str()?;
         s.starts_with(&prefix).then(|| MinecraftVersion {
@@ -996,28 +996,28 @@ pub async fn install_version(
     if let Some(n) = &custom_name {
         let bad = n.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) || n.contains("..");
         if bad {
-            return Err(format!("自定义名不合法: {n}（不能包含 / \\ : * ? \" < > |）"));
+            return Err(format!("Invalid custom name: {n} (must not contain / \\ : * ? \" < > |)"));
         }
     }
     if INSTALLING.swap(true, Ordering::SeqCst) {
-        return Err("已有安装任务正在进行".to_string());
+        return Err("Another installation is already running".to_string());
     }
     CANCEL.store(false, Ordering::Relaxed);
     let result = match loader {
         0 => install_vanilla(&app, &game_version).await,
         1 => {
-            let lv = loader_version.ok_or("loader=1 需要 loaderVersion（fabric loader 版本）")?;
+            let lv = loader_version.ok_or("loader=1 requires loaderVersion (the fabric loader version)")?;
             install_fabric(&app, &game_version, &lv).await
         }
         2 => {
-            let lv = loader_version.ok_or("loader=2 需要 loaderVersion（forge 完整版本，如 1.20.1-47.2.0）")?;
+            let lv = loader_version.ok_or("loader=2 requires loaderVersion (full forge version, e.g. 1.20.1-47.2.0)")?;
             install_forge(&app, &game_version, &lv, java_path.as_deref()).await
         }
         3 => {
-            let lv = loader_version.ok_or("loader=3 需要 loaderVersion（neoforge 版本，如 21.1.77）")?;
+            let lv = loader_version.ok_or("loader=3 requires loaderVersion (neoforge version, e.g. 21.1.77)")?;
             install_neoforge(&app, &game_version, &lv, java_path.as_deref()).await
         }
-        _ => Err(format!("未知 loader: {loader}")),
+        _ => Err(format!("Unknown loader: {loader}")),
     };
     INSTALLING.store(false, Ordering::Relaxed);
     // 按自定义名落地版本目录（覆盖包括"已安装，资源已就绪"在内的提前返回路径）

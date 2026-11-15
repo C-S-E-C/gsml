@@ -177,34 +177,34 @@ fn candidate_roots() -> Vec<(PathBuf, &'static str)> {
     if cfg!(windows) {
         let pf = PathBuf::from(pf);
         for (sub, src) in [
-            ("Java", "目录扫描"),
-            ("Eclipse Adoptium", "目录扫描"),
-            ("Microsoft", "目录扫描"),
-            ("Zulu", "目录扫描"),
-            ("Amazon Corretto", "目录扫描"),
-            ("BellSoft", "目录扫描"),
-            ("SapMachine", "目录扫描"),
-            ("Semeru", "目录扫描"),
-            ("RedHat", "目录扫描"),
+            ("Java", "Scan"),
+            ("Eclipse Adoptium", "Scan"),
+            ("Microsoft", "Scan"),
+            ("Zulu", "Scan"),
+            ("Amazon Corretto", "Scan"),
+            ("BellSoft", "Scan"),
+            ("SapMachine", "Scan"),
+            ("Semeru", "Scan"),
+            ("RedHat", "Scan"),
         ] {
             roots.push((pf.join(sub), src));
         }
         let pf86 = PathBuf::from(pf86);
-        roots.push((pf86.join("Java"), "目录扫描"));
+        roots.push((pf86.join("Java"), "Scan"));
         if !local.is_empty() {
             let local = PathBuf::from(local);
-            roots.push((local.join("Programs").join("Eclipse Adoptium"), "目录扫描"));
-            roots.push((local.join("Programs").join("Java"), "目录扫描"));
+            roots.push((local.join("Programs").join("Eclipse Adoptium"), "Scan"));
+            roots.push((local.join("Programs").join("Java"), "Scan"));
         }
     } else {
-        roots.push((PathBuf::from("/usr/lib/jvm"), "目录扫描"));
-        roots.push((PathBuf::from("/opt/java"), "目录扫描"));
-        roots.push((PathBuf::from("/opt/homebrew/opt"), "目录扫描")); // macOS Homebrew openjdk
-        roots.push((PathBuf::from("/Library/Java/JavaVirtualMachines"), "目录扫描"));
+        roots.push((PathBuf::from("/usr/lib/jvm"), "Scan"));
+        roots.push((PathBuf::from("/opt/java"), "Scan"));
+        roots.push((PathBuf::from("/opt/homebrew/opt"), "Scan")); // macOS Homebrew openjdk
+        roots.push((PathBuf::from("/Library/Java/JavaVirtualMachines"), "Scan"));
     }
     // IntelliJ 管理的 JDK（跨平台都在用户目录 .jdks）
     if !user_home.is_empty() {
-        roots.push((PathBuf::from(&user_home).join(".jdks"), "目录扫描"));
+        roots.push((PathBuf::from(&user_home).join(".jdks"), "Scan"));
     }
     roots.retain(|(p, _)| p.is_dir());
     roots
@@ -309,7 +309,7 @@ pub(crate) fn scan_java_installations() -> Vec<JavaRuntime> {
                         version,
                         vendor,
                         kind: if is_jdk(&exe) { "JDK" } else { "JRE" }.to_string(),
-                        source: "Minecraft 运行时".to_string(),
+                        source: "Minecraft runtime".to_string(),
                         is_default,
                     },
                     &mut seen,
@@ -388,7 +388,7 @@ pub async fn list_java_installations() -> Result<Vec<JavaRuntime>, String> {
     }
     tauri::async_runtime::spawn_blocking(scan_java_installations)
         .await
-        .map_err(|e| format!("Java 扫描任务异常退出: {e}"))
+        .map_err(|e| format!("Java scan task aborted: {e}"))
 }
 
 /// 校验用户填写的自定义 Java 路径（可直接填 java.exe 或其所在目录）。
@@ -397,7 +397,7 @@ pub async fn list_java_installations() -> Result<Vec<JavaRuntime>, String> {
 pub async fn check_java_path(path: String) -> Result<JavaRuntime, String> {
     let path = path.trim().to_string();
     if path.is_empty() {
-        return Err("路径为空".into());
+        return Err("Path is empty".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
         let p = PathBuf::from(&path);
@@ -407,16 +407,16 @@ pub async fn check_java_path(path: String) -> Result<JavaRuntime, String> {
         } else if p.is_dir() {
             p.join(java_exe_name())
         } else {
-            return Err(format!("路径不存在: {path}"));
+            return Err(format!("Path does not exist: {path}"));
         };
         if !exe.is_file() {
             return Err(format!(
-                "该目录下没有找到 {}（可直接填写可执行文件的完整路径）",
+                "No Java executable found under this directory ({}) — you can paste the full path to java.exe instead",
                 java_exe_name()
             ));
         }
         let Some((version, vendor)) = probe_java(&exe) else {
-            return Err(format!("无法执行该 Java（--version 调用失败）: {}", exe.display()));
+            return Err(format!("Failed to run this Java (--version failed): {}", exe.display()));
         };
         let home = if is_file {
             exe.parent().and_then(|b| b.parent()).unwrap_or(&p).to_path_buf()
@@ -429,10 +429,10 @@ pub async fn check_java_path(path: String) -> Result<JavaRuntime, String> {
             version,
             vendor,
             kind: if is_jdk(&exe) { "JDK" } else { "JRE" }.to_string(),
-            source: "自定义".to_string(),
+            source: "Custom".to_string(),
             is_default: false,
         })
     })
     .await
-    .map_err(|e| format!("校验任务异常退出: {e}"))?
+    .map_err(|e| format!("Validation task aborted: {e}"))?
 }

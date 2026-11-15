@@ -53,7 +53,7 @@ fn kind_dir(account_type: i64, uuid: &str) -> Result<PathBuf, String> {
 fn encode_png(img: &RgbaImage) -> Result<Vec<u8>, String> {
     let mut buf = std::io::Cursor::new(Vec::new());
     img.write_to(&mut buf, ImageFormat::Png)
-        .map_err(|e| format!("PNG 编码失败: {e}"))?;
+        .map_err(|e| format!("PNG encoding failed: {e}"))?;
     Ok(buf.into_inner())
 }
 
@@ -163,16 +163,16 @@ fn default_body() -> RgbaImage {
 /// 确保 skin/default.{head,body}.png 存在，返回 skin 根目录
 fn ensure_default_skin() -> Result<PathBuf, String> {
     let root = skin_root()?;
-    std::fs::create_dir_all(&root).map_err(|e| format!("创建 skin 目录失败: {e}"))?;
+    std::fs::create_dir_all(&root).map_err(|e| format!("Failed to create the skin directory: {e}"))?;
     let head_path = root.join("default.head.png");
     let body_path = root.join("default.body.png");
     if !head_path.exists() {
         std::fs::write(&head_path, encode_png(&default_head())?)
-            .map_err(|e| format!("写入 default.head.png 失败: {e}"))?;
+            .map_err(|e| format!("Failed to write default.head.png: {e}"))?;
     }
     if !body_path.exists() {
         std::fs::write(&body_path, encode_png(&default_body())?)
-            .map_err(|e| format!("写入 default.body.png 失败: {e}"))?;
+            .map_err(|e| format!("Failed to write default.body.png: {e}"))?;
     }
     Ok(root)
 }
@@ -194,11 +194,11 @@ fn default_pair(root: &Path) -> (Vec<u8>, Vec<u8>) {
 /// legacy 64×32 没有第二层 overlay，左侧由右侧水平镜像。
 fn render_skin_bytes(png: &[u8], slim: bool) -> Result<(Vec<u8>, Vec<u8>), String> {
     let skin = image::load_from_memory(png)
-        .map_err(|e| format!("皮肤 PNG 解析失败: {e}"))?
+        .map_err(|e| format!("Failed to parse the skin PNG: {e}"))?
         .to_rgba8();
     let (w, h) = (skin.width(), skin.height());
     if w != 64 || (h != 64 && h != 32) {
-        return Err(format!("不支持的皮肤尺寸 {w}×{h}（仅支持 64×64 / 64×32）"));
+        return Err(format!("Unsupported skin size {w}×{h} (only 64×64 / 64×32)"));
     }
 
     // 头像：脸 (8,8) + 帽子层 (40,8)
@@ -243,17 +243,17 @@ async fn http_bytes(url: &str) -> Result<Vec<u8>, String> {
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("请求 {url} 失败: {e}"))?;
+        .map_err(|e| format!("Request to {url} failed: {e}"))?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(format!("请求 {url} 失败 ({status})"));
+        return Err(format!("Request to {url} failed ({status})"));
     }
     let bytes = resp
         .bytes()
         .await
-        .map_err(|e| format!("读取 {url} 失败: {e}"))?;
+        .map_err(|e| format!("Failed to read {url}: {e}"))?;
     if bytes.len() > 1024 * 1024 {
-        return Err(format!("{url} 响应过大（{} 字节）", bytes.len()));
+        return Err(format!("{url} response too large ({} bytes)", bytes.len()));
     }
     Ok(bytes.to_vec())
 }
@@ -345,9 +345,9 @@ async fn cache_microsoft_skin_inner(
     let png = http_bytes(skin_url).await?;
     let (head, body) = render_skin_bytes(&png, slim)?;
     let dir = kind_dir(0, uuid)?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("创建皮肤目录失败: {e}"))?;
-    std::fs::write(dir.join("head.png"), head).map_err(|e| format!("写入 head.png 失败: {e}"))?;
-    std::fs::write(dir.join("body.png"), body).map_err(|e| format!("写入 body.png 失败: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create the skin directory: {e}"))?;
+    std::fs::write(dir.join("head.png"), head).map_err(|e| format!("Failed to write head.png: {e}"))?;
+    std::fs::write(dir.join("body.png"), body).map_err(|e| format!("Failed to write body.png: {e}"))?;
     Ok(())
 }
 
@@ -371,7 +371,7 @@ pub async fn get_account_skin(
             rusqlite::params![account_id],
             |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)),
         )
-        .map_err(|_| format!("账号不存在 (id={account_id})"))?
+        .map_err(|_| format!("Account not found (id={account_id})"))?
     };
 
     let dir = kind_dir(account_type, &uuid)?;

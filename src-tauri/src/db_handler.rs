@@ -11,7 +11,7 @@ use tauri::State;
 /// 所有模块（db、皮肤缓存、披风缓存）共用这一个入口，不再各自拼路径。
 pub fn data_root() -> Result<PathBuf, String> {
     Ok(dirs::data_local_dir()
-        .ok_or("无法定位本地数据目录")?
+        .ok_or("Cannot locate the local data directory")?
         .join("Syntropica")
         .join("GlowSquidMinecraftLauncher"))
 }

@@ -68,7 +68,7 @@ pub fn default_sources() -> Vec<DownloadSource> {
     vec![
         DownloadSource {
             id: "official".to_string(),
-            name: "Mojang 官方".to_string(),
+            name: "Mojang Official".to_string(),
             manifest_url: OFFICIAL_MANIFEST.to_string(),
             ping_url: String::new(),
             rewrites: Vec::new(),
@@ -76,7 +76,7 @@ pub fn default_sources() -> Vec<DownloadSource> {
         },
         DownloadSource {
             id: "bmclapi".to_string(),
-            name: "BMCLAPI 镜像".to_string(),
+            name: "BMCLAPI Mirror".to_string(),
             manifest_url: "https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json"
                 .to_string(),
             ping_url: String::new(),
@@ -94,7 +94,7 @@ pub fn default_sources() -> Vec<DownloadSource> {
         },
         DownloadSource {
             id: "minguncle".to_string(),
-            name: "Minguncle MCMirror 镜像".to_string(),
+            name: "Minguncle MCMirror".to_string(),
             manifest_url: "https://mirror.minguncle.cn/mc/game/version_manifest_v2.json"
                 .to_string(),
             ping_url: String::new(),
@@ -153,7 +153,7 @@ async fn ping(client: &reqwest::Client, url: &str) -> Result<u64, String> {
     let start = Instant::now();
     let resp = tokio::time::timeout(PING_TIMEOUT, client.get(url).send())
         .await
-        .map_err(|_| "超时".to_string())?
+        .map_err(|_| "timeout".to_string())?
         .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status().as_u16()));
@@ -165,20 +165,21 @@ async fn ping(client: &reqwest::Client, url: &str) -> Result<u64, String> {
 async fn decode(client: &reqwest::Client, url: &str) -> Result<Vec<Value>, String> {
     let resp = tokio::time::timeout(FETCH_TIMEOUT, client.get(url).send())
         .await
-        .map_err(|_| "超时".to_string())?
+        .map_err(|_| "timeout".to_string())?
         .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status().as_u16()));
     }
     let body = tokio::time::timeout(FETCH_TIMEOUT, resp.text())
         .await
-        .map_err(|_| "读取超时".to_string())?
+        .map_err(|_| "read timeout".to_string())?
         .map_err(|e| e.to_string())?;
-    let json: Value = serde_json::from_str(&body).map_err(|e| format!("清单解析失败: {e}"))?;
+    let json: Value =
+        serde_json::from_str(&body).map_err(|e| format!("manifest parse failed: {e}"))?;
     json["versions"]
         .as_array()
         .cloned()
-        .ok_or_else(|| "清单格式异常（缺少 versions）".to_string())
+        .ok_or_else(|| "unexpected manifest format (no versions)".to_string())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -259,7 +260,7 @@ pub async fn probe_download_sources(
 
     let enabled: Vec<DownloadSource> = sources.into_iter().filter(|s| s.enabled).collect();
     if enabled.is_empty() {
-        return Err("没有启用的下载源".to_string());
+        return Err("No download source is enabled".to_string());
     }
     let total = enabled.len();
     let client = http_client();
@@ -282,7 +283,7 @@ pub async fn probe_download_sources(
             if latency.is_ok() {
                 match decode(&client, &manifest_url).await {
                     Ok(versions) => outcome.versions = Some(versions),
-                    Err(e) => outcome.error = Some(format!("解码失败: {e}")),
+                    Err(e) => outcome.error = Some(format!("decode failed: {e}")),
                 }
             }
             // 胜出后接收端关闭：这里的 send 失败即「被抛弃」
@@ -314,16 +315,16 @@ pub async fn probe_download_sources(
         .iter()
         .map(|e| {
             format!(
-                "{}（{}）",
+                "{} ({})",
                 e.name,
-                e.error.clone().unwrap_or_else(|| "无响应".to_string())
+                e.error.clone().unwrap_or_else(|| "no response".to_string())
             )
         })
         .collect::<Vec<_>>()
-        .join("；");
+        .join("; ");
     let mut res = ProbeResult::empty(false);
     res.entries = entries;
-    res.error = Some(format!("所有下载源都不可用：{detail}"));
+    res.error = Some(format!("All download sources are unavailable: {detail}"));
     Ok(res)
 }
 

@@ -95,8 +95,8 @@ function matchesGameVersion(ver, wanted) {
 
 function launchText(ver, server) {
     const loader = LOADER_LABEL[ver.loader] || 'Vanilla';
-    const serverText = server ? `\n并自动加入服务器：${server}` : '';
-    return `Minecraft ${ver.name}（${loader}）${serverText}\n\n确认后将回到首页并启动游戏。`;
+    const serverText = server ? `\nAnd auto-join server: ${server}` : '';
+    return `Minecraft ${ver.name} (${loader})${serverText}\n\nContinue to go back to Home and launch it.`;
 }
 
 /**
@@ -162,12 +162,12 @@ function showDeeplinkDialog({ title, text, choices }) {
 async function handleInstallAction(action) {
     const loader = Number(action.loader) || 0;
     const lv = action.loaderVersion ? ` ${action.loaderVersion}` : '';
-    const name = action.name ? `\n实例名：${action.name}` : '';
+    const name = action.name ? `\nInstance name: ${action.name}` : '';
     const res = await showDeeplinkDialog({
-        title: '前往安装？',
-        text: `Minecraft ${action.version}（${LOADER_LABEL[loader] || 'Vanilla'}${lv}）${name}`
-            + '\n\n确认后将打开 Download 页并预填这些选项，'
-            + '你可以在那里改 loader / 版本，确认无误再点 Install。',
+        title: 'Go to install?',
+        text: `Minecraft ${action.version} (${LOADER_LABEL[loader] || 'Vanilla'}${lv})${name}`
+            + '\n\nContinue to open the Download page with these options prefilled.'
+            + ' You can change the loader / version there and click Install when ready.',
     });
     if (res.ok) {
         navigateAndPost('download', action);
@@ -194,16 +194,16 @@ async function handleLaunchAction(action) {
     const matches = wanted ? local.filter((ver) => matchesGameVersion(ver, wanted)) : local;
     if (!matches.length) {
         await showDeeplinkDialog({
-            title: '无法启动',
+            title: 'Cannot launch',
             text: wanted
-                ? `本地没有 ${wanted} 的实例，请先在 Download 页安装。`
-                : '本地还没有安装任何版本。',
+                ? `No local instance for ${wanted}. Install it on the Download page first.`
+                : 'No local version is installed yet.',
         });
         return;
     }
     if (matches.length === 1) {
         const res = await showDeeplinkDialog({
-            title: '启动游戏？',
+            title: 'Launch game?',
             text: launchText(matches[0], action.server),
         });
         if (res.ok) {
@@ -216,8 +216,8 @@ async function handleLaunchAction(action) {
         return;
     }
     const res = await showDeeplinkDialog({
-        title: wanted ? `选择 ${wanted} 的实例` : '选择要启动的实例',
-        text: `找到 ${matches.length} 个可用实例，点一行启动：`,
+        title: wanted ? `Choose an instance of ${wanted}` : 'Choose an instance to launch',
+        text: `${matches.length} instances found; click one to launch:`,
         choices: matches.map((ver) => ({
             headline: ver.name,
             supporting: `${LOADER_LABEL[ver.loader] || 'Vanilla'}${

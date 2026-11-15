@@ -38,12 +38,12 @@
 
         <div id="add-account-offline" class="add-account-panel">
           <md-outlined-text-field id="offline-name" label="Player name" required
-            supporting-text="Offline 账号仅需一个玩家名"></md-outlined-text-field>
+            supporting-text="Offline accounts only need a player name"></md-outlined-text-field>
         </div>
 
         <div id="add-account-microsoft" class="add-account-panel" hidden>
           <p style="margin:0;line-height:1.6;">
-            点击 Add 后将打开系统浏览器完成微软登录
+            Click Add to open your browser and finish the Microsoft login.
           </p>
           <!-- 登录进度：Rust 每一步广播 ms-login-progress 事件，home.js 更新 -->
           <div class="ms-login-progress" id="ms-login-progress" hidden>
@@ -91,7 +91,7 @@
       <div class="pill-row start-mc">
         <md-filled-select id="launch-ver-select"></md-filled-select>
         <!-- 版本设置：为当前选中版本覆盖 Java / 内存（存 svar，留空沿用全局） -->
-        <md-branded-fab id="version-settings-btn" aria-label="版本设置" title="版本设置">
+        <md-branded-fab id="version-settings-btn" aria-label="Version settings" title="Version settings">
           <md-icon slot="icon">settings</md-icon>
         </md-branded-fab>
         <!-- 主 CTA：extended branded FAB（label 属性渲染文字，icon 槽放图标）。
@@ -108,22 +108,22 @@
          支持一键复制日志、跳转 Java 设置。Minecraft 窗口出现（收到 running
          事件）后自动隐藏。 -->
     <md-dialog type="modal" id="launch-progress-dialog">
-      <div slot="headline" id="launch-dialog-title">正在启动游戏</div>
+      <div slot="headline" id="launch-dialog-title">Launching game</div>
       <div slot="content">
         <md-linear-progress id="launch-dialog-bar" indeterminate></md-linear-progress>
-        <p class="launch-dialog-status" id="launch-dialog-status">正在准备…</p>
+        <p class="launch-dialog-status" id="launch-dialog-status">Preparing…</p>
         <div class="launch-dialog-error" id="launch-dialog-error" hidden>
           <p class="launch-error-summary" id="launch-error-summary"></p>
           <div class="launch-error-meta" id="launch-error-meta" hidden></div>
           <pre class="launch-error-log" id="launch-error-log"></pre>
           <div class="launch-error-actions">
-            <md-filled-tonal-button id="launch-error-copy">复制日志</md-filled-tonal-button>
-            <md-outlined-button id="launch-error-settings" hidden>打开 Java 设置</md-outlined-button>
+            <md-filled-tonal-button id="launch-error-copy">Copy log</md-filled-tonal-button>
+            <md-outlined-button id="launch-error-settings" hidden>Open Java settings</md-outlined-button>
           </div>
         </div>
       </div>
       <div slot="actions">
-        <md-filled-tonal-button slot="cancel" id="launch-dialog-close" hidden>关闭</md-filled-tonal-button>
+        <md-filled-tonal-button slot="cancel" id="launch-dialog-close" hidden>Close</md-filled-tonal-button>
       </div>
     </md-dialog>
 
@@ -139,15 +139,15 @@
           <span>Java</span>
           <md-filled-select id="version-settings-java">
             <md-select-option value="auto">
-              <span slot="headline">Auto — 按版本要求自动选择</span>
+              <span slot="headline">Auto — pick by the version requirement</span>
             </md-select-option>
           </md-filled-select>
         </div>
         <div class="version-settings-field">
           <md-outlined-text-field id="version-settings-memory" type="number" min="512" step="256"
-            label="Memory (MB)" placeholder="留空使用默认 1024"></md-outlined-text-field>
+            label="Memory (MB)" placeholder="Empty = default 1024"></md-outlined-text-field>
         </div>
-        <p class="version-settings-hint" id="version-settings-hint">留空的项目沿用全局设置（Settings → Java）与后端默认值。</p>
+        <p class="version-settings-hint" id="version-settings-hint">Empty fields follow the global settings (Settings → Java) and backend defaults.</p>
       </div>
       <div slot="actions">
         <md-filled-tonal-button id="version-settings-cancel">Cancel</md-filled-tonal-button>

@@ -222,7 +222,7 @@ async function refreshVersions() {
             pauseWhileRunning: pauseWhilePlaying,
         });
         if (res.skipped) {
-            setSourcesNote('游戏运行中，本轮跳过测速');
+            setSourcesNote('Minecraft is running; skipped this speed test');
         } else if (res.error) {
             setSourcesNote(res.error);
         } else if (res.source_name) {
@@ -479,7 +479,7 @@ function onProgress(event) {
         bits.push(`${fmtBytes(speed)}/s`);
     }
     $('dl-progress-label').textContent
-        = [label || '下载中…', bits.join(' · ')].filter(Boolean).join(' · ');
+        = [label || 'Downloading…', bits.join(' · ')].filter(Boolean).join(' · ');
 }
 
 // ── 已安装版本 ───────────────────────────────────────────────────────

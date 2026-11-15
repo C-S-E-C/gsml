@@ -702,7 +702,7 @@ function showMsLoginProgress() {
     }
     els.bar.indeterminate = false;
     els.bar.value = 0;
-    els.step.textContent = '准备打开系统浏览器…';
+    els.step.textContent = 'Opening your browser…';
     els.wrap.hidden = false;
 }
 
@@ -820,11 +820,11 @@ async function handleConfirm(dialog) {
             if (field) {
                 field.toggleAttribute('error', !name);
                 if (!name) {
-                    field.setAttribute('error-text', '用户名不能为空');
+                    field.setAttribute('error-text', 'Username is required');
                 }
             }
             if (!name) {
-                showAddAccountError('用户名不能为空');
+                showAddAccountError('Username is required');
                 return;
             }
             setAddAccountBusy(true);
@@ -1052,7 +1052,7 @@ async function setupLaunchMenu() {
             return;
         }
         if (selectedAccountId == null) {
-            showLaunchError('启动失败', '请先添加并选择一个账号。');
+            showLaunchError('Launch failed', 'Add and select an account first.');
             return;
         }
         const versionId = launchVerSelect.value;
@@ -1084,7 +1084,7 @@ async function setupLaunchMenu() {
             // 不做 close→show：md-dialog 关闭动画进行中立刻 show() 会被收尾的
             // 关闭动画覆盖，报错弹窗会一闪而过。dialog 已打开时原地切换为错误模式。
             launchRunning(false);
-            showLaunchError('启动失败', error);
+            showLaunchError('Launch failed', error);
             console.error('launch failed', error);
         }
     }
@@ -1094,8 +1094,8 @@ async function setupLaunchMenu() {
         const target = localVersions.find((ver) => ver.name === versionName);
         if (!target) {
             showLaunchError(
-                '启动失败',
-                `本地没有安装版本「${versionName}」，请先在 Download 页安装。`,
+                'Launch failed',
+                `Version "${versionName}" is not installed. Install it on the Download page first.`,
             );
             return false;
         }
@@ -1129,7 +1129,7 @@ async function setupLaunchMenu() {
             // 同上：原地切换为错误模式，不做 close→show（关闭动画竞态会让
             // 报错弹窗一闪而过）。
             launchRunning(false);
-            showLaunchError(payload.stage === 'crash' ? '游戏异常退出' : '启动失败', payload);
+            showLaunchError(payload.stage === 'crash' ? 'Game crashed' : 'Launch failed', payload);
         }
     });
 
@@ -1159,7 +1159,7 @@ function openLaunchProgress() {
     const dialog = document.getElementById('launch-progress-dialog');
     const statusEl = document.getElementById('launch-dialog-status');
     if (statusEl) {
-        statusEl.textContent = launchStatus.lastText || '正在启动…';
+        statusEl.textContent = launchStatus.lastText || 'Starting…';
     }
     setDialogMode(false); // 进度模式
     setPageScrollLocked(true);
@@ -1172,9 +1172,9 @@ function openLaunchProgress() {
 // payload 兼容两种形态：结构化 launch-status 载荷
 // { detail, stage?, code?, aliveSecs?, pid?, tail? } 或纯字符串（invoke reject）。
 const LAUNCH_STAGE_LABELS = {
-    resolve: '解析账号/配置',
-    launch: '启动进程',
-    crash: '进程崩溃',
+    resolve: 'Resolving account/config',
+    launch: 'Starting process',
+    crash: 'Process crashed',
 };
 
 function formatLaunchErrorText(summary, meta, logLines) {
@@ -1183,7 +1183,7 @@ function formatLaunchErrorText(summary, meta, logLines) {
         parts.push(meta.map(([k, v]) => `${k}: ${v}`).join('，'));
     }
     if (logLines.length > 0) {
-        parts.push('--- 最近日志 ---', ...logLines);
+        parts.push('--- Recent log ---', ...logLines);
     }
     return parts.join('\n');
 }
@@ -1195,8 +1195,8 @@ function showLaunchError(title, payload) {
         && typeof payload === 'object'
         && ('detail' in payload || 'stage' in payload);
     const summary = isStructured
-        ? (payload.detail || '未知错误')
-        : (payload instanceof Error ? payload.message : String(payload ?? '未知错误'));
+        ? (payload.detail || 'Unknown error')
+        : (payload instanceof Error ? payload.message : String(payload ?? 'Unknown error'));
     const stage = isStructured ? payload.stage : null;
     const code = isStructured ? payload.code : null;
     const aliveSecs = isStructured ? payload.aliveSecs : null;
@@ -1207,7 +1207,7 @@ function showLaunchError(title, payload) {
     setPageScrollLocked(true);
     const titleEl = document.getElementById('launch-dialog-title');
     if (titleEl) {
-        titleEl.textContent = title || '启动失败';
+        titleEl.textContent = title || 'Launch failed';
     }
     const summaryEl = document.getElementById('launch-error-summary');
     if (summaryEl) {
@@ -1217,16 +1217,16 @@ function showLaunchError(title, payload) {
     // 元信息行：只显示有值的项。
     const meta = [];
     if (code !== null && code !== undefined) {
-        meta.push(['退出码', code]);
+        meta.push(['Exit code', code]);
     }
     if (aliveSecs !== null && aliveSecs !== undefined) {
-        meta.push(['存活', `${aliveSecs}s`]);
+        meta.push(['Alive', `${aliveSecs}s`]);
     }
     if (pid !== null && pid !== undefined) {
         meta.push(['PID', pid]);
     }
     if (stage && LAUNCH_STAGE_LABELS[stage]) {
-        meta.push(['阶段', LAUNCH_STAGE_LABELS[stage]]);
+        meta.push(['Stage', LAUNCH_STAGE_LABELS[stage]]);
     }
     const metaEl = document.getElementById('launch-error-meta');
     if (metaEl) {
@@ -1261,13 +1261,13 @@ function showLaunchError(title, payload) {
             const fullText = formatLaunchErrorText(summary, meta, logLines);
             try {
                 await navigator.clipboard.writeText(fullText);
-                freshCopy.textContent = '已复制';
+                freshCopy.textContent = 'Copied';
             } catch (err) {
                 console.error('copy launch error failed:', err);
-                freshCopy.textContent = '复制失败';
+                freshCopy.textContent = 'Copy failed';
             }
             setTimeout(() => {
-                freshCopy.textContent = '复制日志';
+                freshCopy.textContent = 'Copy log';
             }, 1500);
         });
     }
@@ -1454,17 +1454,17 @@ function setupVersionSettings() {
         const hintEl = document.getElementById('version-settings-hint');
         if (hintEl) {
             if (runtimes.length > 0) {
-                hintEl.textContent = '留空的项目沿用全局设置（Settings → Java）与后端默认值。';
+                hintEl.textContent = 'Empty fields follow the global settings (Settings → Java) and backend defaults.';
             } else {
                 const running = await invokeFn('is_game_running').catch(() => false);
                 hintEl.textContent = running
-                    ? '游戏运行中，已跳过 Java 扫描；停止游戏后重新打开本对话框可看到完整列表。'
-                    : '未检测到已安装的 Java；Auto 会由后端按版本要求挑选。';
+                    ? 'Minecraft is running, so the Java scan was skipped; stop the game and reopen this dialog to see the full list.'
+                    : 'No Java installation found; Auto will let the backend pick by version requirement.';
             }
         }
         javaSelect.innerHTML = [
             `<md-select-option value="auto">
-                <span slot="headline">Auto — 按版本要求自动选择</span>
+                <span slot="headline">Auto — pick by the version requirement</span>
             </md-select-option>`,
             ...runtimes.map((rt) => `
                 <md-select-option value="${escapeHtml(rt.path)}">

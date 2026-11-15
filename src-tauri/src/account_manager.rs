@@ -80,17 +80,17 @@ async fn send_json(
     let resp = req
         .send()
         .await
-        .map_err(|e| format!("请求 {url} 失败: {e}"))?;
+        .map_err(|e| format!("Request to {url} failed: {e}"))?;
     let status = resp.status();
     let text = resp
         .text()
         .await
-        .map_err(|e| format!("读取 {url} 响应失败: {e}"))?;
+        .map_err(|e| format!("Failed to read the response from {url}: {e}"))?;
     let json = if text.trim().is_empty() {
         serde_json::Value::Null
     } else {
         serde_json::from_str(&text).map_err(|e| {
-            format!("解析 {url} 响应失败 ({status}): {e}；响应体: {}", truncate(&text, 400))
+            format!("Failed to parse the response from {url} ({status}): {e}; body: {}", truncate(&text, 400))
         })?
     };
     Ok((status, json))
@@ -154,7 +154,7 @@ fn offline_uuid(name: &str) -> String {
 pub fn login_offline(db: State<'_, Db>, name: String) -> Result<AccountRow, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err("用户名不能为空".into());
+        return Err("Username is required".into());
     }
 
     let uuid = offline_uuid(&name);
@@ -302,7 +302,7 @@ pub async fn login_microsoft(app: AppHandle, db: State<'_, Db>) -> Result<Accoun
         }
         if let Some(desc) = pairs.get("error_description").or(pairs.get("error")) {
             if let Some(tx) = tx.lock().unwrap().take() {
-                let _ = tx.send(Err(format!("微软登录失败: {desc}")));
+                let _ = tx.send(Err(format!("Microsoft login failed: {desc}")));
             }
         } else if let Some(code) = pairs.get("code") {
             if let Some(tx) = tx.lock().unwrap().take() {
@@ -315,7 +315,7 @@ pub async fn login_microsoft(app: AppHandle, db: State<'_, Db>) -> Result<Accoun
     let mut auth_url = Url::parse(&format!(
         "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
     ))
-    .map_err(|e| format!("拼授权 URL 失败: {e}"))?;
+    .map_err(|e| format!("Failed to build the authorization URL: {e}"))?;
     auth_url.query_pairs_mut()
         .append_pair("client_id", &client_id)
         .append_pair("response_type", "code")
@@ -328,38 +328,38 @@ pub async fn login_microsoft(app: AppHandle, db: State<'_, Db>) -> Result<Accoun
         .append_pair("code_challenge", &code_challenge)
         .append_pair("code_challenge_method", "S256");
 
-    emit_progress(&app, 1, "正在打开系统浏览器…");
+    emit_progress(&app, 1, "Opening your browser…");
     app.opener()
         .open_url(auth_url.as_str(), None::<&str>)
-        .map_err(|e| format!("打开浏览器失败: {e}"))?;
+        .map_err(|e| format!("Failed to open the browser: {e}"))?;
 
-    emit_progress(&app, 2, "等待微软授权回调（最多 5 分钟）…");
+    emit_progress(&app, 2, "Waiting for the Microsoft callback (up to 5 minutes)…");
 
     // 4) 等浏览器回调（deeplink_handler 分发到上面注册的 handler）
     let code = match tokio::time::timeout(LOGIN_TIMEOUT, rx).await {
         Ok(Ok(Ok(code))) => code,
         Ok(Ok(Err(e))) => return Err(e),
-        Ok(Err(_)) => return Err("登录已取消".into()),
-        Err(_) => return Err("登录超时（5 分钟）".into()),
+        Ok(Err(_)) => return Err("Login cancelled".into()),
+        Err(_) => return Err("Login timed out (5 minutes)".into()),
     };
     drop(sub); // 注销本次登录的 deeplink 回调
 
     // 5) code 换 MSA token
-    emit_progress(&app, 3, "正在获取微软令牌…");
+    emit_progress(&app, 3, "Fetching the Microsoft token…");
     let tokens = exchange_code(&code, &code_verifier, &client_id, &tenant_id).await?;
 
     // 6) MSA -> XBL -> XSTS -> Minecraft
-    emit_progress(&app, 4, "正在认证 Xbox Live…");
+    emit_progress(&app, 4, "Authenticating with Xbox Live…");
     let (xbl_token, _) = xbl_authenticate(&tokens.access_token).await?;
-    emit_progress(&app, 5, "正在获取 XSTS 授权…");
+    emit_progress(&app, 5, "Fetching the XSTS authorization…");
     let (xsts_token, uhs) = xsts_authorize(&xbl_token).await?;
-    emit_progress(&app, 6, "正在登录 Minecraft 服务…");
+    emit_progress(&app, 6, "Signing in to Minecraft services…");
     let mc_token = login_with_xbox(&uhs, &xsts_token).await?;
-    emit_progress(&app, 7, "正在获取玩家资料…");
+    emit_progress(&app, 7, "Fetching the player profile…");
     let profile = fetch_minecraft_profile(&mc_token).await?;
 
     // 7) 令牌存 keyring（msa_id = XBL uhs，即 xuid，账号唯一标识）
-    emit_progress(&app, 8, "正在保存账号信息…");
+    emit_progress(&app, 8, "Saving the account…");
     store_refresh_token(&uhs, tokens.refresh_token.as_deref())?;
     store_access_token(&uhs, &mc_token)?;
 
@@ -424,19 +424,19 @@ async fn exchange_code(
         ])
         .send()
         .await
-        .map_err(|e| format!("请求微软 token 接口失败: {e}"))?;
+        .map_err(|e| format!("Request to the Microsoft token endpoint failed: {e}"))?;
 
     let json: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| format!("解析 token 响应失败: {e}"))?;
+        .map_err(|e| format!("Failed to parse the token response: {e}"))?;
     if let Some(desc) = json.get("error_description").and_then(|v| v.as_str()) {
-        return Err(format!("微软登录失败: {desc}"));
+        return Err(format!("Microsoft login failed: {desc}"));
     }
     let access_token = json
         .get("access_token")
         .and_then(|v| v.as_str())
-        .ok_or("token 响应缺少 access_token")?
+        .ok_or("token response is missing access_token")?
         .to_string();
     let refresh_token = json
         .get("refresh_token")
@@ -466,17 +466,17 @@ async fn xbl_authenticate(msa_token: &str) -> Result<(String, String), String> {
     let (status, json) =
         post_json("https://user.auth.xboxlive.com/user/authenticate", &[], &body).await?;
     if !status.is_success() {
-        return Err(format!("XBL 认证失败 ({status}): {}", describe_json(&json, 400)));
+        return Err(format!("Xbox Live authentication failed ({status}): {}", describe_json(&json, 400)));
     }
     let token = json
         .get("Token")
         .and_then(|v| v.as_str())
-        .ok_or("XBL 响应缺少 Token")?
+        .ok_or("XBL response is missing Token")?
         .to_string();
     let uhs = json
         .pointer("/DisplayClaims/xui/0/uhs")
         .and_then(|v| v.as_str())
-        .ok_or("XBL 响应缺少 uhs")?
+        .ok_or("XBL response is missing uhs")?
         .to_string();
     Ok((token, uhs))
 }
@@ -504,21 +504,21 @@ async fn xsts_authorize(xbl_token: &str) -> Result<(String, String), String> {
             2148916235 => "该账号所在地区不提供 Xbox 服务".into(),
             2148916236 | 2148916237 => "该账号需要年龄验证".into(),
             2148916238 => "该账号是儿童账号，需加入家庭组才能登录".into(),
-            other => format!("XSTS 授权失败 (XErr: {other})"),
+            other => format!("XSTS authorization failed (XErr: {other})"),
         });
     }
     if !status.is_success() {
-        return Err(format!("XSTS 授权失败 ({status}): {}", describe_json(&json, 400)));
+        return Err(format!("XSTS authorization failed ({status}): {}", describe_json(&json, 400)));
     }
     let token = json
         .get("Token")
         .and_then(|v| v.as_str())
-        .ok_or("XSTS 响应缺少 Token")?
+        .ok_or("XSTS response is missing Token")?
         .to_string();
     let uhs = json
         .pointer("/DisplayClaims/xui/0/uhs")
         .and_then(|v| v.as_str())
-        .ok_or("XSTS 响应缺少 uhs")?
+        .ok_or("XSTS response is missing uhs")?
         .to_string();
     Ok((token, uhs))
 }
@@ -563,15 +563,15 @@ async fn login_with_xbox(uhs: &str, xsts_token: &str) -> Result<String, String> 
     )
     .await?;
     if !status.is_success() {
-        return Err(format!("Minecraft 登录失败 ({status}): {}", describe_json(&json, 400)));
+        return Err(format!("Minecraft login failed ({status}): {}", describe_json(&json, 400)));
     }
     if let Some(desc) = json.get("error").and_then(|v| v.as_str()) {
-        return Err(format!("Minecraft 登录失败: {desc}"));
+        return Err(format!("Minecraft login failed: {desc}"));
     }
     json.get("access_token")
         .and_then(|v| v.as_str())
         .map(str::to_string)
-        .ok_or("Minecraft 登录响应缺少 access_token".into())
+        .ok_or("Minecraft login response is missing access_token".into())
 }
 
 /// 用 Minecraft token 拉取玩家资料。
@@ -583,16 +583,16 @@ async fn fetch_minecraft_profile_raw(mc_token: &str) -> Result<Result<McProfile,
         .bearer_auth(mc_token)
         .send()
         .await
-        .map_err(|e| format!("获取 Minecraft 资料失败: {e}"))?;
+        .map_err(|e| format!("Failed to fetch the Minecraft profile: {e}"))?;
 
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Ok(Err(format!("获取 Minecraft 资料失败 ({status}): {text}")));
+        return Ok(Err(format!("Failed to fetch the Minecraft profile ({status}): {text}")));
     }
     serde_json::from_str(&text)
         .map(Ok)
-        .map_err(|e| format!("解析 Minecraft 资料失败: {e}"))
+        .map_err(|e| format!("Failed to parse the Minecraft profile: {e}"))
 }
 
 /// 便捷封装：成功返回 profile，非 2xx / 网络错误都返回 Err
@@ -645,8 +645,8 @@ fn lookup_msa_id(
             rusqlite::params![account_id],
             |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
         )
-        .map_err(|_| format!("微软账号不存在 (id={account_id})"))?;
-    let msa_id = msa_id.ok_or_else(|| format!("账号缺少微软标识 (id={account_id})"))?;
+        .map_err(|_| format!("Microsoft account not found (id={account_id})"))?;
+    let msa_id = msa_id.ok_or_else(|| format!("Account is missing its Microsoft id (id={account_id})"))?;
     Ok((uuid, msa_id))
 }
 
@@ -665,18 +665,18 @@ async fn refresh_minecraft_token(refresh_token: &str) -> Result<(Option<String>,
         ])
         .send()
         .await
-        .map_err(|e| format!("请求微软 token 接口失败: {e}"))?;
+        .map_err(|e| format!("Request to the Microsoft token endpoint failed: {e}"))?;
     let json: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| format!("解析 token 响应失败: {e}"))?;
+        .map_err(|e| format!("Failed to parse the token response: {e}"))?;
     if let Some(desc) = json.get("error_description").and_then(|v| v.as_str()) {
-        return Err(format!("微软登录失败: {desc}"));
+        return Err(format!("Microsoft login failed: {desc}"));
     }
     let msa_access = json
         .get("access_token")
         .and_then(|v| v.as_str())
-        .ok_or("token 响应缺少 access_token")?
+        .ok_or("token response is missing access_token")?
         .to_string();
     let new_refresh = json
         .get("refresh_token")
@@ -708,7 +708,7 @@ async fn ensure_mc_token(msa_id: &str) -> Result<(String, Option<McProfile>), St
 
     // 走刷新链
     let refresh = keyring_get(&format!("ms_refresh:{msa_id}"))?
-        .ok_or("缺少微软刷新凭据，请重新登录微软账号")?;
+        .ok_or("Missing Microsoft refresh credentials; sign in to the Microsoft account again")?;
     let (new_refresh, mc_token) = refresh_minecraft_token(&refresh).await?;
     // 刷新后的凭据回存（refresh token 可能轮换，必须更新）
     store_refresh_token(msa_id, new_refresh.as_deref())?;
@@ -796,15 +796,15 @@ pub async fn ms_change_skin(
     // 1) base64 解码（前端用标准带 padding 的 base64）
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(skin_base64.trim())
-        .map_err(|e| format!("皮肤图片 base64 解码失败: {e}"))?;
+        .map_err(|e| format!("Failed to base64-decode the skin image: {e}"))?;
 
     // 2) 校验是 64×64 PNG（Mojang 只接受这个规格）
     {
         let img = image::load_from_memory(&bytes)
-            .map_err(|e| format!("皮肤图片不是有效的 PNG: {e}"))?;
+            .map_err(|e| format!("The skin image is not a valid PNG: {e}"))?;
         let (w, h) = (img.width(), img.height());
         if w != 64 || h != 64 {
-            return Err(format!("皮肤图片必须是 64×64 像素，当前为 {w}×{h}"));
+            return Err(format!("The skin image must be 64×64 px, got {w}×{h}"));
         }
     }
 
@@ -835,7 +835,7 @@ pub async fn ms_change_skin(
     let part = reqwest::multipart::Part::bytes(bytes)
         .file_name("skin.png")
         .mime_str("image/png")
-        .map_err(|e| format!("构造皮肤上传请求失败: {e}"))?;
+        .map_err(|e| format!("Failed to build the skin upload request: {e}"))?;
     let form = reqwest::multipart::Form::new()
         .text("variant", variant_normalized)
         .part("file", part);
@@ -845,17 +845,17 @@ pub async fn ms_change_skin(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| format!("上传皮肤失败: {e}"))?;
+        .map_err(|e| format!("Skin upload failed: {e}"))?;
 
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(format!("上传皮肤失败 ({status}): {text}"));
+        return Err(format!("Skin upload failed ({status}): {text}"));
     }
     // 接口 2xx 时仍可能带 error 字段
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
         if let Some(desc) = json.get("error").and_then(|v| v.as_str()) {
-            return Err(format!("上传皮肤失败: {desc}"));
+            return Err(format!("Skin upload failed: {desc}"));
         }
     }
 
@@ -917,7 +917,7 @@ pub async fn ms_change_cape(
         ));
     }
     if let Some(desc) = json.get("error").and_then(|v| v.as_str()) {
-        return Err(format!("切换披风失败: {desc}"));
+        return Err(format!("Failed to switch the cape: {desc}"));
     }
 
     // 成功后重拉 profile 拿最新 capes
@@ -945,12 +945,12 @@ pub fn delete_account(db: State<'_, Db>, account_id: u16) -> Result<(), String> 
                     ))
                 },
             )
-            .map_err(|_| format!("账号不存在 (id={account_id})"))?;
+            .map_err(|_| format!("Account not found (id={account_id})"))?;
         conn.execute(
             "DELETE FROM accounts WHERE id = ?1",
             rusqlite::params![account_id],
         )
-        .map_err(|e| format!("删除账号失败: {e}"))?;
+        .map_err(|e| format!("Failed to delete the account: {e}"))?;
         row
     };
 

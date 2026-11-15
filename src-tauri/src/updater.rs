@@ -127,16 +127,16 @@ async fn fetch_releases(api: &str) -> Result<(String, serde_json::Value), String
             .send(),
     )
     .await
-    .map_err(|_| format!("{api} 请求超时"))?
-    .map_err(|e| format!("{api} 请求失败：{e}"))?
+    .map_err(|_| format!("{api} request timed out"))?
+    .map_err(|e| format!("{api} request failed: {e}"))?
     .error_for_status()
-    .map_err(|e| format!("{api} 请求失败：{e}"))?;
+    .map_err(|e| format!("{api} request failed: {e}"))?;
     let body = tokio::time::timeout(std::time::Duration::from_secs(12), resp.text())
         .await
-        .map_err(|_| format!("{api} 读取超时"))?
-        .map_err(|e| format!("{api} 读取失败：{e}"))?;
+        .map_err(|_| format!("{api} read timed out"))?
+        .map_err(|e| format!("{api} read failed: {e}"))?;
     let value: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("{api} 解析失败：{e}"))?;
+        serde_json::from_str(&body).map_err(|e| format!("{api} parse failed: {e}"))?;
     Ok((api.to_string(), value))
 }
 
@@ -160,7 +160,7 @@ async fn race_releases(candidates: Vec<String>) -> Result<serde_json::Value, Str
             Err(e) => errors.push(e),
         }
     }
-    Err(format!("所有更新源都不可用：{}", errors.join("；")))
+    Err(format!("All update sources are unavailable: {}", errors.join("; ")))
 }
 
 /// 一个更新源（仓库地址或 releases API 均可，内部统一归一化）。
@@ -241,7 +241,7 @@ fn update_entries(outcomes: &[ApiOutcome], chosen: Option<&str>) -> Vec<UpdatePr
 #[tauri::command]
 pub async fn probe_update_sources(sources: Vec<UpdateSource>) -> Result<UpdateProbeResult, String> {
     if sources.is_empty() {
-        return Err("更新源列表为空".to_string());
+        return Err("The update source list is empty".to_string());
     }
     let (tx, mut rx) =
         tokio::sync::mpsc::channel::<ApiOutcome>(sources.len().max(1));
@@ -298,19 +298,19 @@ pub async fn probe_update_sources(sources: Vec<UpdateSource>) -> Result<UpdatePr
         .iter()
         .map(|e| {
             format!(
-                "{}（{}）",
+                "{} ({})",
                 e.name,
-                e.error.clone().unwrap_or_else(|| "无响应".to_string())
+                e.error.clone().unwrap_or_else(|| "no response".to_string())
             )
         })
         .collect::<Vec<_>>()
-        .join("；");
+        .join("; ");
     Ok(UpdateProbeResult {
         source_id: None,
         source_name: None,
         latency_ms: None,
         entries,
-        error: Some(format!("所有更新源都不可用：{detail}")),
+        error: Some(format!("All update sources are unavailable: {detail}")),
     })
 }
 
@@ -358,7 +358,7 @@ fn pick_asset(assets: &[serde_json::Value]) -> Result<(String, String, u64, Inst
             ));
         }
     }
-    Err("当前平台没有可用的 release 资产".into())
+    Err("No release asset available for this platform".into())
 }
 
 #[tauri::command]
@@ -380,14 +380,14 @@ pub async fn check_update(
     ))
     .await?;
 
-    let list = releases.as_array().ok_or("release 列表格式异常")?;
+    let list = releases.as_array().ok_or("Unexpected release list format")?;
     let release = list
         .iter()
         .find(|r| {
             r["draft"].as_bool() != Some(true)
                 && (allow_prerelease || r["prerelease"].as_bool() != Some(true))
         })
-        .ok_or("仓库里没有可用的 release")?;
+        .ok_or("No usable release in the repository")?;
 
     let latest_version = release["tag_name"].as_str().unwrap_or_default().to_string();
     let is_prerelease = release["prerelease"].as_bool() == Some(true);
@@ -431,7 +431,7 @@ pub async fn download_update(
     name: String,
 ) -> Result<PathBuf, String> {
     if url.is_empty() || name.is_empty() {
-        return Err("缺少下载地址或文件名".into());
+        return Err("Missing download URL or file name".into());
     }
     let dest = std::env::temp_dir().join(format!("gsml-update-{}", sanitize_name(&name)));
     let client = http_client();
@@ -440,16 +440,16 @@ pub async fn download_update(
         .header("User-Agent", "gsml-updater")
         .send()
         .await
-        .map_err(|e| format!("连接下载源失败：{e}"))?
+        .map_err(|e| format!("Failed to connect to the download source: {e}"))?
         .error_for_status()
-        .map_err(|e| format!("下载失败：{e}"))?;
+        .map_err(|e| format!("Download failed: {e}"))?;
 
     let total = resp.content_length().unwrap_or(0);
-    emit(&app, "download", 0, total.max(1), "开始下载");
+    emit(&app, "download", 0, total.max(1), "Starting download");
 
     let mut file = tokio::fs::File::create(&dest)
         .await
-        .map_err(|e| format!("创建临时文件失败：{e}"))?;
+        .map_err(|e| format!("Failed to create the temp file: {e}"))?;
     use tokio::io::AsyncWriteExt;
 
     let mut done: u64 = 0;
@@ -458,20 +458,20 @@ pub async fn download_update(
     while let Some(chunk) = stream
         .chunk()
         .await
-        .map_err(|e| format!("下载中断：{e}"))?
+        .map_err(|e| format!("Download interrupted: {e}"))?
     {
-        file.write_all(&chunk).await.map_err(|e| format!("写入失败：{e}"))?;
+        file.write_all(&chunk).await.map_err(|e| format!("Write failed: {e}"))?;
         done += chunk.len() as u64;
         let pct = (done * 100).checked_div(total.max(1)).unwrap_or(100);
         if pct != last_pct {
             last_pct = pct;
-            emit(&app, "download", done, total.max(1), &format!("下载中 {pct}%"));
+            emit(&app, "download", done, total.max(1), &format!("Downloading {pct}%"));
         }
     }
-    file.flush().await.map_err(|e| format!("写入失败：{e}"))?;
+    file.flush().await.map_err(|e| format!("Write failed: {e}"))?;
     drop(file);
 
-    emit(&app, "download", done, total.max(1), "下载完成");
+    emit(&app, "download", done, total.max(1), "Download complete");
     Ok(dest)
 }
 
@@ -490,7 +490,7 @@ fn sanitize_name(name: &str) -> String {
 pub async fn apply_update(app: AppHandle, file: String) -> Result<(), String> {
     let path = PathBuf::from(&file);
     if !path.is_file() {
-        return Err("更新包不存在，请重新下载".into());
+        return Err("The update package does not exist; download it again".into());
     }
 
     #[cfg(target_os = "windows")]
@@ -509,14 +509,14 @@ pub async fn apply_update(app: AppHandle, file: String) -> Result<(), String> {
                 .args(["/i", &file, "/quiet", "/norestart"])
                 .creation_flags(FLAGS)
                 .spawn()
-                .map_err(|e| format!("启动安装器失败：{e}"))?;
+                .map_err(|e| format!("Failed to launch the installer: {e}"))?;
         } else if name.ends_with("-setup.exe") {
             // NSIS setup.exe：自带升级逻辑，直接拉起；/S 静默
             Command::new(&file)
                 .arg("/S")
                 .creation_flags(FLAGS)
                 .spawn()
-                .map_err(|e| format!("启动安装器失败：{e}"))?;
+                .map_err(|e| format!("Failed to launch the installer: {e}"))?;
         } else {
             // 便携包自替换：分离的 cmd 脚本里 taskkill 本进程 → rm 旧 →
             // mv 新 → 重启。
@@ -539,7 +539,7 @@ pub async fn apply_update(app: AppHandle, file: String) -> Result<(), String> {
                 .raw_arg(&script)
                 .creation_flags(FLAGS)
                 .spawn()
-                .map_err(|e| format!("启动替换脚本失败：{e}"))?;
+                .map_err(|e| format!("Failed to launch the replace script: {e}"))?;
         }
     }
 
@@ -547,7 +547,7 @@ pub async fn apply_update(app: AppHandle, file: String) -> Result<(), String> {
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let Some(current) = exe.to_str().map(str::to_string) else {
-            return Err("无法定位当前程序路径".into());
+            return Err("Cannot locate the current executable path".into());
         };
         let name = path
             .file_name()
@@ -562,13 +562,13 @@ pub async fn apply_update(app: AppHandle, file: String) -> Result<(), String> {
             Command::new("sh")
                 .args(["-c", &script, "--", &file, &current])
                 .spawn()
-                .map_err(|e| format!("启动替换脚本失败：{e}"))?;
+                .map_err(|e| format!("Failed to launch the replace script: {e}"))?;
         } else {
             // deb/rpm：交给系统安装器（图形化 front-end 会弹窗）
             Command::new("xdg-open")
                 .arg(&file)
                 .spawn()
-                .map_err(|e| format!("打开安装包失败：{e}"))?;
+                .map_err(|e| format!("Failed to open the installer package: {e}"))?;
             // 交给用户手动安装时不能退出自己
             return Ok(());
         }
@@ -579,14 +579,14 @@ pub async fn apply_update(app: AppHandle, file: String) -> Result<(), String> {
         Command::new("open")
             .arg(&file)
             .spawn()
-            .map_err(|e| format!("打开 dmg 失败：{e}"))?;
+            .map_err(|e| format!("Failed to open the dmg: {e}"))?;
         // dmg 拖拽安装是手动的，保留当前进程
         return Ok(());
     }
 
     // 自替换/安装器路径：给脚本/安装器一点启动时间后退出本进程
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    emit(&app, "apply", 1, 1, "正在应用更新…");
+    emit(&app, "apply", 1, 1, "Applying update…");
     // 直接终止本进程；替换脚本/安装器已在独立的分离进程里运行
     std::process::exit(0);
     #[allow(unreachable_code)]

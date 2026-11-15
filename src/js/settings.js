@@ -101,28 +101,28 @@ async function runCheck() {
     const customUrl = source?.url || null;
     try {
         button.disabled = true;
-        updateStatus('正在检查更新…');
+        updateStatus('Checking for updates…');
         const info = await checkForUpdates(customUrl, source?.append_per_page !== false);
         if (info.up_to_date) {
-            updateStatus(`已是最新版本 ${info.latest_version}`);
+            updateStatus(`Already up to date (${info.latest_version})`);
             return;
         }
-        const channel = info.is_prerelease ? '（预发布）' : '';
+        const channel = info.is_prerelease ? ' (pre-release)' : '';
         // 不强更：发现新版本先用 M3 对话框征求同意，拒绝则停在提示页
         const confirmed = await showUpdateConfirmDialog(
-            `发现新版本 ${info.latest_version}${channel}（${info.asset_name}）。` +
-            '\n要下载并安装吗？安装会重启启动器。',
+            `Update available: ${info.latest_version}${channel} (${info.asset_name}).` +
+            '\nDownload and install it now? The launcher will restart.',
         );
         if (!confirmed) {
-            updateStatus(`发现新版本 ${info.latest_version}${channel}，已取消。可稍后再检查。`);
+            updateStatus(`Update ${info.latest_version}${channel} skipped; check again later.`);
             return;
         }
-        updateStatus(`正在下载 ${info.asset_name}…`, {
+        updateStatus(`Downloading ${info.asset_name}…`, {
             showProgress: true,
             progress: 0,
         });
         const file = await downloadUpdate(({ done, total, label }) => {
-            updateStatus(label || '下载中…', {
+            updateStatus(label || 'Downloading…', {
                 showProgress: true,
                 progress: total > 0 ? done / total : 0,
             });
@@ -130,7 +130,7 @@ async function runCheck() {
         await applyDownloaded(file);
     } catch (err) {
         console.error('update failed:', err);
-        updateStatus(`更新失败：${err}`);
+        updateStatus(`Update failed: ${err}`);
     } finally {
         button.disabled = false;
     }
@@ -197,22 +197,22 @@ function javaItemHtml(rt) {
 async function renderJavaList() {
     const list = document.getElementById('java-list');
     if (!list) return;
-    list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">正在扫描已安装的 Java…</div></md-list-item>`;
+    list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">Scanning installed Java…</div></md-list-item>`;
     try {
         javaRuntimes = await invokeFn('list_java_installations');
         if (!Array.isArray(javaRuntimes) || javaRuntimes.length === 0) {
             // 后端在游戏运行时会跳过扫描（不起 java -version 进程），这里区分提示
             const running = await invokeFn('is_game_running').catch(() => false);
             const text = running
-                ? '游戏运行中，已跳过 Java 扫描（停止游戏后再刷新）。'
-                : '未检测到已安装的 Java。';
+                ? 'Minecraft is running, so the Java scan was skipped (stop the game and refresh).'
+                : 'No installed Java found.';
             list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">${text}</div></md-list-item>`;
             return;
         }
         list.innerHTML = javaRuntimes.map(javaItemHtml).join('');
     } catch (err) {
         console.error('list_java_installations failed:', err);
-        list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">扫描失败：${escapeHtml(String(err))}</div></md-list-item>`;
+        list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">Scan failed: ${escapeHtml(String(err))}</div></md-list-item>`;
     }
 }
 
@@ -221,7 +221,7 @@ async function saveJavaPath(value) {
         await invokeFn('set_svar', { key: JAVA_SVAR_KEY, value });
     } catch (err) {
         console.error(`set_svar(${JAVA_SVAR_KEY}) failed:`, err);
-        javaStatus(`保存失败：${err}`, true);
+        javaStatus(`Save failed: ${err}`, true);
         return false;
     }
     return true;
@@ -242,15 +242,15 @@ async function initJavaSettings() {
         saveButton.disabled = true;
         try {
             if (!raw) {
-                if (await saveJavaPath('')) javaStatus('已清空自定义 Java，恢复自动检测。');
+                if (await saveJavaPath('')) javaStatus('Custom Java cleared; back to auto-detect.');
                 await renderJavaList();
                 return;
             }
-            javaStatus('正在校验该 Java…');
+            javaStatus('Validating this Java…');
             const rt = await invokeFn('check_java_path', { path: raw });
             if (await saveJavaPath(rt.path)) {
                 input.value = rt.path;
-                javaStatus(`已保存：${[rt.kind, rt.version].filter(Boolean).join(' ')}${rt.vendor ? `（${rt.vendor}）` : ''} — ${rt.path}`);
+                javaStatus(`Saved: ${[rt.kind, rt.version].filter(Boolean).join(' ')}${rt.vendor ? ` (${rt.vendor})` : ''} — ${rt.path}`);
             }
             await renderJavaList();
         } catch (err) {
@@ -263,7 +263,7 @@ async function initJavaSettings() {
 
     clearButton?.addEventListener('click', async () => {
         input.value = '';
-        if (await saveJavaPath('')) javaStatus('已清空自定义 Java，恢复自动检测。');
+        if (await saveJavaPath('')) javaStatus('Custom Java cleared; back to auto-detect.');
         await renderJavaList();
     });
 
@@ -276,7 +276,7 @@ async function initJavaSettings() {
         if (await saveJavaPath(path)) {
             input.value = path;
             const rt = javaRuntimes.find((r) => r.path === path);
-            javaStatus(`已保存：${[rt?.kind, rt?.version].filter(Boolean).join(' ') || 'Java'} — ${path}`);
+            javaStatus(`Saved: ${[rt?.kind, rt?.version].filter(Boolean).join(' ') || 'Java'} — ${path}`);
             await renderJavaList();
         }
     });
@@ -311,16 +311,16 @@ function renderSources() {
     }
     list.innerHTML = sources.map((src) => {
         const entry = sourceEntries.find((e) => e.id === src.id);
-        let latency = '待测';
+        let latency = 'Testing';
         let cls = 'idle';
         if (src.enabled === false) {
-            latency = '已禁用';
+            latency = 'Disabled';
         } else if (entry) {
             if (entry.latency_ms != null) {
                 latency = `${entry.latency_ms} ms`;
                 cls = 'ok';
             } else {
-                latency = entry.error ? '不可用' : '待测';
+                latency = entry.error ? 'Unavailable' : 'Testing';
                 cls = 'bad';
             }
         }
@@ -383,7 +383,7 @@ async function testSources() {
         return;
     }
     testingSources = true;
-    setSourceNote('正在同时测速…');
+    setSourceNote('Testing all sources…');
     try {
         const res = await invokeFn('probe_download_sources', {
             sources,
@@ -393,12 +393,12 @@ async function testSources() {
         chosenSourceId = res.source_id ?? null;
         renderSources();
         if (res.skipped) {
-            setSourceNote('游戏运行中，本轮跳过测速');
+            setSourceNote('Minecraft is running; skipped this test');
         } else if (res.error) {
             setSourceNote(res.error);
         } else if (res.source_name) {
             const ms = res.latency_ms != null ? ` · ${res.latency_ms} ms` : '';
-            setSourceNote(`最快：${res.source_name}${ms}`);
+            setSourceNote(`Fastest: ${res.source_name}${ms}`);
             void invokeFn('set_svar', { key: SRC_ACTIVE_KEY, value: res.source_id ?? null })
                 .catch(() => {});
         } else {
@@ -436,7 +436,7 @@ function bindSourcePanel() {
             return;
         }
         if (sources.length <= 1) {
-            setSourceNote('至少保留一个下载源');
+            setSourceNote('Keep at least one download source');
             return;
         }
         sources = sources.filter((s) => s.id !== btn.dataset.id);
@@ -456,7 +456,7 @@ function bindSourcePanel() {
         const name = $el('source-name').value.trim();
         const url = $el('source-url').value.trim();
         if (!name || !/^https?:\/\//i.test(url)) {
-            setSourceNote('请填写名称与 http(s) 清单地址');
+            setSourceNote('Enter a name and an http(s) manifest URL');
             return;
         }
         sources = [...sources, {
@@ -502,19 +502,19 @@ function renderUpdateSources() {
     }
     list.innerHTML = updateSources.map((src) => {
         const entry = updateEntries.find((e) => e.id === src.id);
-        let latency = '待测';
+        let latency = 'Testing';
         let cls = 'idle';
         if (entry) {
             if (entry.latency_ms != null) {
                 latency = `${entry.latency_ms} ms`;
                 cls = 'ok';
             } else {
-                latency = entry.error ? '不可用' : '待测';
+                latency = entry.error ? 'Unavailable' : 'Testing';
                 cls = 'bad';
             }
         }
         const chosen = updateChosenId === src.id ? ' selected' : '';
-        const perPage = src.append_per_page === false ? '（不追加 ?per_page=20）' : '';
+        const perPage = src.append_per_page === false ? ' (no ?per_page=20)' : '';
         return `
             <li class="dl-source${chosen}" data-id="${escapeHtml(src.id)}"
                 title="${escapeHtml(src.url)}${perPage}">
@@ -557,7 +557,7 @@ async function testUpdateSources() {
         return;
     }
     testingUpdates = true;
-    updateNote('正在同时测速…');
+    updateNote('Testing all sources…');
     try {
         const res = await invokeFn('probe_update_sources', { sources: updateSources });
         updateEntries = res.entries || [];
@@ -567,7 +567,7 @@ async function testUpdateSources() {
             updateNote(res.error);
         } else if (res.source_name) {
             const ms = res.latency_ms != null ? ` · ${res.latency_ms} ms` : '';
-            updateNote(`最快：${res.source_name}${ms}`);
+            updateNote(`Fastest: ${res.source_name}${ms}`);
             void saveSvar(UPDATE_SRC_ACTIVE_KEY, res.source_id ?? null);
         } else {
             updateNote('');
@@ -594,7 +594,7 @@ async function initUpdateSourcePanel() {
             return;
         }
         if (updateSources.length <= 1) {
-            updateNote('至少保留一个更新源');
+            updateNote('Keep at least one update source');
             return;
         }
         updateSources = updateSources.filter((s) => s.id !== btn.dataset.id);
@@ -617,7 +617,7 @@ async function initUpdateSourcePanel() {
         const name = $el('update-source-name').value.trim();
         const url = $el('update-source-url').value.trim();
         if (!name || !/^https?:\/\//i.test(url)) {
-            updateNote('请填写名称与 http(s) 地址');
+            updateNote('Enter a name and an http(s) URL');
             return;
         }
         const appendPerPage = $el('update-source-perpage')
@@ -669,19 +669,19 @@ async function initSettingsPage() {
 function drunkenBishop(input, height, width) {
   // ---- 参数校验 ----
   if (typeof input !== 'string') {
-    throw new TypeError('input 必须是字符串');
+    throw new TypeError('input must be a string');
   }
   if (!Number.isInteger(height) || height <= 0) {
-    throw new RangeError('height 必须是正整数');
+    throw new RangeError('height must be a positive integer');
   }
   if (!Number.isInteger(width) || width <= 0) {
-    throw new RangeError('width 必须是正整数');
+    throw new RangeError('width must be a positive integer');
   }
 
   // ---- 清理并校验十六进制 ----
   const hex = input.replace(/\s+/g, '').toLowerCase();
   if (!/^[0-9a-f]*$/.test(hex)) {
-    throw new Error('input 包含非十六进制字符（仅允许 0-9, a-f, A-F, 空白）');
+    throw new Error('input contains non-hex characters (only 0-9, a-f, A-F, whitespace)');
   }
 
   // ---- 十六进制 -> 字节数组（奇数长度左侧补 0）----

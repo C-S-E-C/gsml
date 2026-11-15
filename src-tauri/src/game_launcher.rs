@@ -68,7 +68,7 @@ fn find_account_row(
         },
     )
     .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => format!("账号不存在 (id={account_id})"),
+        rusqlite::Error::QueryReturnedNoRows => format!("Account not found (id={account_id})"),
         other => other.to_string(),
     })
 }
@@ -102,8 +102,8 @@ async fn resolve_launch_account(
 fn read_version_json(root: &Path, id: &str) -> Result<Value, String> {
     let path = root.join("versions").join(id).join(format!("{id}.json"));
     let text =
-        fs::read_to_string(&path).map_err(|e| format!("读取版本 {id} 的 JSON 失败: {e}"))?;
-    serde_json::from_str(&text).map_err(|e| format!("解析版本 {id} 的 JSON 失败: {e}"))
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read version JSON {id}: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("Failed to parse version JSON {id}: {e}"))
 }
 
 /// 单个参数条目是否在当前平台/特性下启用（rules ± features）。
@@ -202,7 +202,7 @@ pub fn launch_game(
     server: Option<String>,
 ) -> Result<(), String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
-        return Err("已有游戏正在启动/运行，请先停止".to_string());
+        return Err("A game is already starting or running; stop it first".to_string());
     }
     let memory_mb = memory_mb.unwrap_or(1024);
 
@@ -241,7 +241,7 @@ pub fn launch_game(
         let result = match launch_res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(e),
-            Err(_panic) => Err("启动器内部错误（后台任务异常中断）".to_string()),
+            Err(_panic) => Err("Internal launcher error (background task aborted)".to_string()),
         };
         if let Err(e) = result {
             log_err(&format!("launch_game 失败: {e}"));
@@ -414,17 +414,17 @@ fn dir_has_natives(dir: &Path) -> bool {
 fn extract_natives_from_jars(jars: &[PathBuf], natives_dir: &Path) -> Result<(), String> {
     for jar in jars {
         let file = fs::File::open(jar)
-            .map_err(|e| format!("打开 natives jar 失败 {}: {e}", jar.display()))?;
+            .map_err(|e| format!("Failed to open natives jar {}: {e}", jar.display()))?;
         let mut archive = zip::ZipArchive::new(file)
-            .map_err(|e| format!("读取 natives jar 失败 {}: {e}", jar.display()))?;
+            .map_err(|e| format!("Failed to read natives jar {}: {e}", jar.display()))?;
         for i in 0..archive.len() {
             let mut entry = archive
                 .by_index(i)
-                .map_err(|e| format!("读取 natives jar 条目失败: {e}"))?;
+                .map_err(|e| format!("Failed to read natives jar entry: {e}"))?;
             // zip 9.x 的 ZipFile::name() 返回 Result<Cow<str>, ZipError>
             let name = entry
                 .name()
-                .map_err(|e| format!("读取 jar 条目名失败: {e}"))?
+                .map_err(|e| format!("Failed to read jar entry name: {e}"))?
                 .to_string();
             if name.ends_with('/') || name.contains("META-INF/") {
                 continue; // 目录 / Mojang 的 extract.exclude
@@ -440,9 +440,9 @@ fn extract_natives_from_jars(jars: &[PathBuf], natives_dir: &Path) -> Result<(),
                 continue; // 已解压过（可能是别的启动器放的）
             }
             let mut out = fs::File::create(&dest)
-                .map_err(|e| format!("写入 {} 失败: {e}", dest.display()))?;
+                .map_err(|e| format!("Failed to write {}: {e}", dest.display()))?;
             std::io::copy(&mut entry, &mut out)
-                .map_err(|e| format!("解压 {base} 到 natives 失败: {e}"))?;
+                .map_err(|e| format!("Failed to extract {base} into natives: {e}"))?;
         }
     }
     Ok(())
@@ -514,12 +514,12 @@ fn select_java(
         } else {
             let exe = path.join(java_exe_name());
             if !exe.is_file() {
-                return Err(format!("指定的 Java 路径不存在: {p}"));
+                return Err(format!("Specified Java path does not exist: {p}"));
             }
             exe
         };
         let ver = java_manager::probe_java(&exe).and_then(|(v, _)| java_major(&v));
-        candidates.push((exe, "手动指定".to_string(), ver));
+        candidates.push((exe, "Manual".to_string(), ver));
     }
     for rt in java_manager::scan_java_installations() {
         candidates.push((
@@ -535,7 +535,7 @@ fn select_java(
     {
         return Ok((
             exe.clone(),
-            Some(format!("，{source}，满足该版本要求的 Java {m}")),
+            Some(format!(", {source}, Java {m} matches this version's requirement")),
         ));
     }
     // 其次：主版本 ≥ 要求的最小者（新 Java 通常可运行旧版本，仅作兜底）。
@@ -547,7 +547,7 @@ fn select_java(
         return Ok((
             exe.clone(),
             Some(format!(
-                "，{source}，本机没有 Java {required}，已选用 Java {m}"
+                ", {source}, no Java {required} installed; using Java {m}"
             )),
         ));
     }
@@ -712,17 +712,17 @@ fn launch_blocking(
     classpath.retain(|p| cp_seen.insert(p.clone()));
 
     if main_class.is_empty() {
-        return Err(format!("版本 {version_id} 缺少 mainClass"));
+        return Err(format!("Version {version_id} is missing mainClass"));
     }
     if asset_index.is_empty() {
-        return Err(format!("版本 {version_id} 缺少 assetIndex"));
+        return Err(format!("Version {version_id} is missing assetIndex"));
     }
 
     let natives_dir = root
         .join("versions")
         .join(&effective_base)
         .join("natives");
-    fs::create_dir_all(&natives_dir).map_err(|e| format!("创建 natives 目录失败: {e}"))?;
+    fs::create_dir_all(&natives_dir).map_err(|e| format!("Failed to create natives directory: {e}"))?;
     // 别的启动器装的版本常常把 DLL 解压在自己命名的目录里（PCL2 就是
     // `<版本>-natives/`），我们的 natives 目录会是空的。这里从 libraries
     // 里的 natives jar 直接补齐，避免 LWJGL2 版本一启动就
@@ -731,13 +731,13 @@ fn launch_blocking(
     if !dir_has_natives(&natives_dir) {
         if !missing_native_jars.is_empty() {
             return Err(format!(
-                "缺少 natives 本地库：{}。请重新安装该版本以补全依赖库。",
-                missing_native_jars.join("、")
+                "Missing native libraries: {}. Reinstall this version to restore them.",
+                missing_native_jars.join(", ")
             ));
         }
         if !native_jars.is_empty() {
             return Err(
-                "natives jar 已找到但没有解出本地库，请检查 libraries 目录完整性".to_string(),
+                "Found natives jars but extracted no native libraries; check the libraries directory".to_string(),
             );
         }
     }
@@ -807,7 +807,7 @@ fn launch_blocking(
     emit_status(
         app,
         "starting",
-        &format!("正在启动 {version_id}…（Java: {}{note}）", java.display()),
+        &format!("Launching {version_id}… (Java: {}{note})", java.display()),
     );
 
     // —— spawn（detached，子进程读 stdout/stderr 转发事件）——
@@ -829,7 +829,7 @@ fn launch_blocking(
     let started_at = std::time::Instant::now();
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return Err(format!("无法启动 Java 进程: {e}")),
+        Err(e) => return Err(format!("Failed to start Java process: {e}")),
     };
     let pid = child.id();
     // 先取出 stdout/stderr 管道句柄，交给读者线程转发；Child 本体存入全局供 stop_game
@@ -837,7 +837,7 @@ fn launch_blocking(
     let stderr = child.stderr.take();
     *CHILD.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
 
-    emit_status(app, "running", &format!("游戏已启动（PID {pid}），日志将实时显示"));
+    emit_status(app, "running", &format!("Game started (PID {pid}); logs will stream here"));
 
     let app_out = app.clone();
     let app_wait = app.clone();
@@ -887,11 +887,11 @@ fn launch_blocking(
         // 退出码展示统一成纯数字（Option 的 {:?} 会显示成 Some(1)/None）。
         let code_text = code
             .map(|c| c.to_string())
-            .unwrap_or_else(|| "未知".to_string());
+            .unwrap_or_else(|| "unknown".to_string());
 
         // 用户主动停止：走 stopped（不弹错）。
         if child.is_none() {
-            emit_status(&app_wait, "stopped", &format!("游戏已停止（退出码 {code_text}）"));
+            emit_status(&app_wait, "stopped", &format!("Game stopped (exit code {code_text})"));
             return;
         }
 
@@ -907,11 +907,11 @@ fn launch_blocking(
         let tail_text = tail.into_iter().map(|(_, _, l)| l).collect::<Vec<_>>().join("\n");
         let abnormal = code.map_or(true, |c| c != 0);
         if abnormal {
-            let summary = format!("游戏进程异常退出（退出码 {code_text}，存活 {alive}s）");
+            let summary = format!("Game process exited unexpectedly (exit code {code_text}, alive {alive}s)");
             let detail = if tail_text.is_empty() {
-                format!("{summary}。无更多输出。")
+                format!("{summary}. No further output.")
             } else {
-                format!("{summary}。\n{}", tail_text)
+                format!("{summary}.\n{}", tail_text)
             };
             log_err(&detail);
             // 结构化错误事件：detail 只放一行摘要，尾部/退出码/存活时长走独立字段，
@@ -929,7 +929,7 @@ fn launch_blocking(
                 }),
             );
         } else {
-            emit_status(&app_wait, "stopped", &format!("游戏进程已退出（退出码 {code_text}，运行 {alive}s）"));
+            emit_status(&app_wait, "stopped", &format!("Game process exited (exit code {code_text}, ran {alive}s)"));
         }
     });
 

@@ -55,7 +55,8 @@
           <div class="setting-divider"></div>
           <div class="setting-section-label">Update Sources</div>
           <p class="setting-note">
-            多个更新源会同时请求，谁先响应且解析成功就用谁，其余丢弃。
+            All update sources are queried at the same time; the first one that responds
+            and parses successfully is used and the rest are discarded.
           </p>
           <ul class="dl-source-list" id="update-source-list"></ul>
           <div class="dl-source-controls">
@@ -72,8 +73,9 @@
 
           <div class="setting-section-label">Download Sources</div>
           <p class="setting-note">
-            多个源会同时开始测速并解析版本清单，谁先响应且解析成功就用谁，其余自动丢弃。
-            游戏运行期间可暂停测速。
+            All sources start the speed test and manifest parse at the same time; the first
+            one that responds and parses successfully is used and the rest are discarded.
+            Speed tests can be paused while the game is running.
           </p>
           <ul class="dl-source-list" id="dl-source-list"></ul>
           <div class="dl-source-controls">
@@ -153,8 +155,8 @@
           placeholder="https://api.github.com/repos/owner/repo/releases"
           style="width:100%;margin-top:12px;"></md-outlined-text-field>
         <p class="setting-note">
-          请直接填**完整的 releases 接口地址**（原样请求，不会自动补 /releases，
-          也不会改写域名）；返回体需为 release 数组。
+          Enter the **full releases API URL** (it is requested as-is: no automatic
+          /releases suffix, no host rewriting); the response must be a release array.
         </p>
         <label class="dl-source-opt" style="margin-top:12px;">
           <input type="checkbox" id="update-source-perpage" checked />
@@ -177,8 +179,8 @@
           placeholder="https://…/mc/game/version_manifest_v2.json"
           style="width:100%;margin-top:12px;"></md-outlined-text-field>
         <p class="setting-note">
-          清单里的下载地址会照原样使用；如需把 Mojang 官方域名改写到镜像，
-          请在 svar 的 download-sources 里为该源配置 rewrites。
+          Download URLs from the manifest are used as-is; to rewrite Mojang hosts to a
+          mirror, add a `rewrites` list for this source in the `download-sources` svar.
         </p>
       </div>
       <div slot="actions">
