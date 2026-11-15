@@ -27,6 +27,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db_handler::{AccountRow, Db};
+use crate::java_manager;
 use crate::minecraft_manager;
 
 /// 正在运行的游戏进程句柄（全局唯一）。
@@ -101,6 +102,15 @@ fn arg_allowed(entry: &Value) -> bool {
     let mut allowed = false;
     for r in rules {
         let os_ok = r["os"]["name"].as_str().map_or(true, |n| n == "windows");
+        // os.arch 只在部分 Mojang 规则出现（x86 专用参数）；架构不匹配则规则不生效。
+        let arch_ok = match r["os"]["arch"].as_str() {
+            None => true,
+            Some("x86") => cfg!(target_arch = "x86"),
+            Some("x86_64") | Some("amd64") => cfg!(target_arch = "x86_64"),
+            Some("arm") | Some("arm32") => cfg!(target_arch = "arm"),
+            Some("arm64") | Some("aarch64") => cfg!(target_arch = "aarch64"),
+            Some(_) => true,
+        };
         let feat_ok = match r["features"].as_object() {
             // 本启动器不启用任何 feature（demo/自定义分辨率/quick play），
             // 因此仅当规则要求的所有特性都为“不需要(=false)”时该参数才生效。
@@ -109,7 +119,7 @@ fn arg_allowed(entry: &Value) -> bool {
                 .iter()
                 .all(|(_k, v)| !v.as_bool().unwrap_or(false)),
         };
-        if !(os_ok && feat_ok) {
+        if !(os_ok && arch_ok && feat_ok) {
             continue;
         }
         if r["action"].as_str() == Some("allow") {
@@ -339,6 +349,92 @@ fn maven_rel_path(coord: &str) -> Option<String> {
     ))
 }
 
+/// 当前平台在 version JSON `natives` 映射里的键名（windows / linux / osx）。
+fn native_os_key() -> &'static str {
+    if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "osx"
+    } else {
+        "linux"
+    }
+}
+
+/// 某库条目在当前平台对应的 natives 分类 jar 相对路径（非 natives 库返回 None）。
+fn native_jar_rel(lib: &Value) -> Option<String> {
+    let classifier = lib["natives"][native_os_key()].as_str()?;
+    if let Some(p) = lib["downloads"]["classifiers"][classifier]["path"].as_str() {
+        return Some(p.to_string());
+    }
+    // 只有 Maven 坐标的第三方条目：group:artifact:version:classifier
+    maven_rel_path(&format!("{}:{classifier}", lib["name"].as_str()?))
+}
+
+/// 是否是当前平台的原生库文件（Windows .dll / macOS .dylib|.jnilib / Linux .so）。
+fn is_native_lib(file_name: &str) -> bool {
+    let lower = file_name.to_ascii_lowercase();
+    let ext = lower.rsplit('.').next().unwrap_or("");
+    if cfg!(windows) {
+        ext == "dll"
+    } else if cfg!(target_os = "macos") {
+        ext == "dylib" || ext == "jnilib"
+    } else {
+        ext == "so"
+    }
+}
+
+/// natives 目录里是否已经有本地库。
+fn dir_has_natives(dir: &Path) -> bool {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|e| is_native_lib(&e.file_name().to_string_lossy()))
+        })
+        .unwrap_or(false)
+}
+
+/// 把 natives 分类 jar 里的本地库解压到 natives_dir（已存在的文件跳过）。
+/// 有些版本是别的启动器装的（例如 PCL2 把 DLL 放在 `<版本>-natives/`），
+/// 只认我们自己的 natives 目录会拿到空目录 → LWJGL2 报
+/// "no lwjgl64 in java.library.path"，所以以 libraries 里的 jar 为准补齐。
+fn extract_natives_from_jars(jars: &[PathBuf], natives_dir: &Path) -> Result<(), String> {
+    for jar in jars {
+        let file = fs::File::open(jar)
+            .map_err(|e| format!("打开 natives jar 失败 {}: {e}", jar.display()))?;
+        let mut archive = zip::ZipArchive::new(file)
+            .map_err(|e| format!("读取 natives jar 失败 {}: {e}", jar.display()))?;
+        for i in 0..archive.len() {
+            let mut entry = archive
+                .by_index(i)
+                .map_err(|e| format!("读取 natives jar 条目失败: {e}"))?;
+            // zip 9.x 的 ZipFile::name() 返回 Result<Cow<str>, ZipError>
+            let name = entry
+                .name()
+                .map_err(|e| format!("读取 jar 条目名失败: {e}"))?
+                .to_string();
+            if name.ends_with('/') || name.contains("META-INF/") {
+                continue; // 目录 / Mojang 的 extract.exclude
+            }
+            let Some(base) = name.rsplit('/').next() else {
+                continue;
+            };
+            if base.is_empty() || !is_native_lib(base) {
+                continue;
+            }
+            let dest = natives_dir.join(base);
+            if dest.is_file() {
+                continue; // 已解压过（可能是别的启动器放的）
+            }
+            let mut out = fs::File::create(&dest)
+                .map_err(|e| format!("写入 {} 失败: {e}", dest.display()))?;
+            std::io::copy(&mut entry, &mut out)
+                .map_err(|e| format!("解压 {base} 到 natives 失败: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
 /// 用 token 表替换单个参数里的 ${token}
 fn expand(arg: &str, map: &std::collections::HashMap<&str, String>) -> String {
     let mut out = String::with_capacity(arg.len() + 16);
@@ -361,6 +457,99 @@ fn expand(arg: &str, map: &std::collections::HashMap<&str, String>) -> String {
     out
 }
 
+/// 版本字符串 → 主版本号：`21.0.4` → 21，`17` → 17，`1.8.0_391` → 8。
+fn java_major(version: &str) -> Option<u32> {
+    let mut it = version.split(|c: char| matches!(c, '.' | '_' | '-' | '+'));
+    let first = it.next()?.trim().parse::<u32>().ok()?;
+    if first == 1 {
+        // 老式 "1.M.m_u" 命名：主版本在第二段
+        it.next()?.trim().parse::<u32>().ok()
+    } else {
+        Some(first)
+    }
+}
+
+/// 版本链要求的 Java 主版本（javaVersion.majorVersion，加载器层优先）。
+fn required_java_major(chain: &[(String, Value)]) -> Option<u32> {
+    chain
+        .iter()
+        .find_map(|(_, json)| json["javaVersion"]["majorVersion"].as_u64())
+        .map(|m| m as u32)
+}
+
+/// 依据版本链的 javaVersion 要求选择 Java：
+/// 1) 版本没有要求 → 维持原 find_java 逻辑（显式路径 > JAVA_HOME > PATH）；
+/// 2) 有要求：显式 javaPath 探测主版本匹配则直接用（不匹配不采用，版本要求
+///    优先于全局固定 Java）；否则在本机扫描列表里找主版本相等的安装，其次
+///    取主版本 ≥ 要求的最小者；都探不出版本再退回原 find_java 兜底。
+/// 返回 (java 可执行文件, 附加说明)，说明会拼进 starting 状态文案。
+fn select_java(
+    java_path: Option<&str>,
+    chain: &[(String, Value)],
+) -> Result<(PathBuf, Option<String>), String> {
+    let Some(required) = required_java_major(chain) else {
+        return Ok((minecraft_manager::find_java(java_path)?, None));
+    };
+
+    // 候选：显式 javaPath（若给出且存在）排最前，其后是本机扫描结果
+    //（scan 按「默认优先、版本新→旧」排序，同主版本天然取较新者）。
+    let mut candidates: Vec<(PathBuf, String, Option<u32>)> = Vec::new();
+    if let Some(p) = java_path.map(str::trim).filter(|s| !s.is_empty()) {
+        let path = PathBuf::from(p);
+        let exe = if path.is_file() {
+            path
+        } else {
+            let exe = path.join(java_exe_name());
+            if !exe.is_file() {
+                return Err(format!("指定的 Java 路径不存在: {p}"));
+            }
+            exe
+        };
+        let ver = java_manager::probe_java(&exe).and_then(|(v, _)| java_major(&v));
+        candidates.push((exe, "手动指定".to_string(), ver));
+    }
+    for rt in java_manager::scan_java_installations() {
+        candidates.push((
+            PathBuf::from(&rt.path),
+            rt.source.clone(),
+            java_major(&rt.version),
+        ));
+    }
+
+    // 主版本精确匹配优先。
+    if let Some((exe, source, Some(m))) =
+        candidates.iter().find(|(_, _, v)| *v == Some(required))
+    {
+        return Ok((
+            exe.clone(),
+            Some(format!("，{source}，满足该版本要求的 Java {m}")),
+        ));
+    }
+    // 其次：主版本 ≥ 要求的最小者（新 Java 通常可运行旧版本，仅作兜底）。
+    if let Some((exe, source, Some(m))) = candidates
+        .iter()
+        .filter(|(_, _, v)| v.is_some_and(|x| x > required))
+        .min_by_key(|(_, _, v)| v.unwrap_or(u32::MAX))
+    {
+        return Ok((
+            exe.clone(),
+            Some(format!(
+                "，{source}，本机没有 Java {required}，已选用 Java {m}"
+            )),
+        ));
+    }
+    // 扫描一无所获 / 都探不出版本 → 原逻辑兜底（错误文案沿用旧实现）。
+    minecraft_manager::find_java(java_path).map(|p| (p, None))
+}
+
+fn java_exe_name() -> &'static str {
+    if cfg!(windows) {
+        "java.exe"
+    } else {
+        "java"
+    }
+}
+
 fn launch_blocking(
     app: &AppHandle,
     version_id: &str,
@@ -371,10 +560,10 @@ fn launch_blocking(
     memory_mb: u32,
 ) -> Result<(), String> {
     let root = minecraft_manager::get_minecraft_dir()?;
-    let java = minecraft_manager::find_java(java_path)?;
 
-    // —— 合并版本信息 ——
+    // —— 合并版本信息（先读链：Java 选择依赖版本 JSON 的 javaVersion 要求）——
     let chain = collect_chain(&root, version_id)?;
+    let (java, java_note) = select_java(java_path, &chain)?;
     // chain 从启动目标层一路向下到最底层基底（无 inheritsFrom）→ 基底是最后一个
     let effective_base = chain.last().unwrap().0.clone();
     let mut main_class = String::new();
@@ -382,6 +571,9 @@ fn launch_blocking(
     let mut jvm_args: Vec<String> = Vec::new();
     let mut game_args: Vec<String> = Vec::new();
     let mut classpath: Vec<PathBuf> = Vec::new();
+    // 当前平台需要的 natives 分类 jar（存在/缺失分开记，供解压与报错用）
+    let mut native_jars: Vec<PathBuf> = Vec::new();
+    let mut missing_native_jars: Vec<String> = Vec::new();
 
     for (i, (id, json)) in chain.iter().enumerate() {
         // mainClass / assetIndex 取最上层（加载器/forge 层）定义者优先
@@ -418,6 +610,16 @@ fn launch_blocking(
                 if !minecraft_manager::lib_allowed(lib) {
                     continue;
                 }
+                // LWJGL2 等旧版本的本地库在 natives 分类 jar 里，
+                // 稍后统一解压到 natives 目录（-Djava.library.path）。
+                if let Some(rel) = native_jar_rel(lib) {
+                    let abs = root.join("libraries").join(&rel);
+                    if abs.is_file() {
+                        native_jars.push(abs);
+                    } else {
+                        missing_native_jars.push(rel);
+                    }
+                }
                 // Mojang 式条目直接用 downloads.artifact.path；Fabric 等第三方
                 // JSON 是 Maven 坐标式（只有 name，可能带 url）。坐标式条目
                 // 曾被直接跳过，fabric-loader 的 jar 进不了 classpath，启动
@@ -445,6 +647,14 @@ fn launch_blocking(
         }
     }
 
+    // 同一个库可能被列多次：NeoForge 21.1.x 的 JSON 内部就重复列了 gson，
+    // 基底（1.21.1）又列了一次。重复的 jar 会让 BootStrapLauncher 构造
+    // UnionFileSystem 时以 jar 路径为键撞键，直接抛
+    // "Duplicate key ...jar (attempted merging values ...)"，
+    // 所以拼 -cp 之前按路径去重（保留先出现的一层）。
+    let mut cp_seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    classpath.retain(|p| cp_seen.insert(p.clone()));
+
     if main_class.is_empty() {
         return Err(format!("版本 {version_id} 缺少 mainClass"));
     }
@@ -457,6 +667,24 @@ fn launch_blocking(
         .join(&effective_base)
         .join("natives");
     fs::create_dir_all(&natives_dir).map_err(|e| format!("创建 natives 目录失败: {e}"))?;
+    // 别的启动器装的版本常常把 DLL 解压在自己命名的目录里（PCL2 就是
+    // `<版本>-natives/`），我们的 natives 目录会是空的。这里从 libraries
+    // 里的 natives jar 直接补齐，避免 LWJGL2 版本一启动就
+    // "no lwjgl64 in java.library.path"。
+    extract_natives_from_jars(&native_jars, &natives_dir)?;
+    if !dir_has_natives(&natives_dir) {
+        if !missing_native_jars.is_empty() {
+            return Err(format!(
+                "缺少 natives 本地库：{}。请重新安装该版本以补全依赖库。",
+                missing_native_jars.join("、")
+            ));
+        }
+        if !native_jars.is_empty() {
+            return Err(
+                "natives jar 已找到但没有解出本地库，请检查 libraries 目录完整性".to_string(),
+            );
+        }
+    }
     let game_dir = root.clone();
     let assets_dir = root.join("assets");
 
@@ -478,6 +706,21 @@ fn launch_blocking(
     map.insert("assets_index_name", asset_index.clone());
     map.insert("natives_directory", path_str(&natives_dir));
     map.insert("classpath", classpath_string(&classpath));
+    // Forge/NeoForge 1.17+ 的 jvm 参数依赖这些 token：-p 用 library_directory
+    // 指向 libraries（--add-opens/--add-exports 的目标模块
+    // cpw.mods.securejarhandler 也在其中）。缺了它们模块路径会变成字面量
+    // "${library_directory}"，securejarhandler 加载失败，IMPL_LOOKUP 反射
+    // 抛 InaccessibleObjectException —— 表现为启动约 4 秒即崩（退出码 1）。
+    map.insert("library_directory", path_str(&root.join("libraries")));
+    map.insert(
+        "classpath_separator",
+        if cfg!(windows) { ";" } else { ":" }.to_string(),
+    );
+    map.insert("launcher_name", "gsml".to_string());
+    map.insert(
+        "launcher_version",
+        env!("CARGO_PKG_VERSION").to_string(),
+    );
 
     // —— 组装完整 JVM + mainClass + 游戏参数 ——
     let mut args: Vec<String> = Vec::new();
@@ -500,7 +743,12 @@ fn launch_blocking(
         }
     }
 
-    emit_status(app, "starting", &format!("正在启动 {}…（Java: {}）", version_id, java.display()));
+    let note = java_note.as_deref().unwrap_or("");
+    emit_status(
+        app,
+        "starting",
+        &format!("正在启动 {version_id}…（Java: {}{note}）", java.display()),
+    );
 
     // —— spawn（detached，子进程读 stdout/stderr 转发事件）——
     let mut cmd = Command::new(&java);
@@ -574,27 +822,30 @@ fn launch_blocking(
         let mut child = CHILD.lock().unwrap_or_else(|e| e.into_inner()).take();
         let code = child.as_mut().and_then(|c| c.wait().ok()).and_then(|s| s.code());
         RUNNING.store(false, Ordering::SeqCst);
+        // 退出码展示统一成纯数字（Option 的 {:?} 会显示成 Some(1)/None）。
+        let code_text = code
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "未知".to_string());
 
         // 用户主动停止：走 stopped（不弹错）。
         if child.is_none() {
-            emit_status(&app_wait, "stopped", &format!("游戏已停止（退出码 {:?}）", code));
+            emit_status(&app_wait, "stopped", &format!("游戏已停止（退出码 {code_text}）"));
             return;
         }
 
         let alive = started_at.elapsed().as_secs();
-        // 异常判定：任何一项触发都视为「启动失败/异常退出」并弹错——
-        //   ① 退出码非 0
-        //   ② 启动后存活极短（< 30s 即退，基本是启动即崩）且确实打印过内容
-        //   ③ 退出码为 0 但 stdout/stderr 里出现明显崩溃关键词
+        // 异常判定只看退出码，不再叠加启发式：
+        //   · Some(0) → 正常退出（玩家自己关闭游戏），绝不弹错；
+        //   · Some(非 0) → 异常退出（如 KnotClient 崩溃时的退出码 1）；
+        //   · None（进程被信号终止/强杀，取不到退出码）→ 视为异常。
+        // 此前还叠加「存活 < 30s 即崩」和「输出含 Exception/Error 等关键词即崩」
+        // 两条启发式，但 Minecraft 正常运行的日志里几乎必然出现这些词
+        // （log4j 的 ERROR 行、退出时音效引擎/线程中断的堆栈等），
+        // 曾导致玩家正常关闭游戏也被误判成崩溃弹窗。
         let tail_text = tail.into_iter().map(|(_, _, l)| l).collect::<Vec<_>>().join("\n");
-        let looks_crashy = ["Exception", "Error", "at ", "Caused by", "Unable"]
-            .iter()
-            .any(|kw| tail_text.contains(kw));
-        let abnormal = code.map_or(true, |c| c != 0)
-            || (alive < 30)
-            || looks_crashy;
+        let abnormal = code.map_or(true, |c| c != 0);
         if abnormal {
-            let summary = format!("游戏进程启动后异常退出（退出码 {:?}，存活 {}s）", code, alive);
+            let summary = format!("游戏进程异常退出（退出码 {code_text}，存活 {alive}s）");
             let detail = if tail_text.is_empty() {
                 format!("{summary}。无更多输出。")
             } else {
@@ -616,7 +867,7 @@ fn launch_blocking(
                 }),
             );
         } else {
-            emit_status(&app_wait, "stopped", &format!("游戏进程已退出（退出码 {:?}，运行 {}s）", code, alive));
+            emit_status(&app_wait, "stopped", &format!("游戏进程已退出（退出码 {code_text}，运行 {alive}s）"));
         }
     });
 

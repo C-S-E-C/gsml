@@ -90,7 +90,15 @@
       </div>
       <div class="pill-row start-mc">
         <md-filled-select id="launch-ver-select"></md-filled-select>
-        <md-branded-fab size="large" label="Launch" id="launch-btn"></md-branded-fab>
+        <!-- 版本设置：为当前选中版本覆盖 Java / 内存（存 svar，留空沿用全局） -->
+        <md-branded-fab id="version-settings-btn" aria-label="版本设置" title="版本设置">
+          <md-icon slot="icon">settings</md-icon>
+        </md-branded-fab>
+        <!-- 主 CTA：extended branded FAB（label 属性渲染文字，icon 槽放图标）。
+             运行中由 home.js 切为 Stop + 错误色，点击即调用 stop_game。 -->
+        <md-branded-fab id="launch-btn" label="Launch" aria-label="Launch">
+          <md-icon slot="icon">play_arrow</md-icon>
+        </md-branded-fab>
       </div>
     </main>
 
@@ -116,6 +124,34 @@
       </div>
       <div slot="actions">
         <md-filled-tonal-button slot="cancel" id="launch-dialog-close" hidden>关闭</md-filled-tonal-button>
+      </div>
+    </md-dialog>
+
+    <!-- ── Version settings dialog（单版本 Java / 内存覆盖） ──
+         由 dock 上的齿轮 FAB 打开；「Auto」表示按版本 JSON 的 javaVersion
+         自动挑选，内存留空则用后端默认（1024 MB）。保存到 svar：
+         java-path:<版本> / memory-mb:<版本>，启动时优先于全局设置。 -->
+    <md-dialog type="modal" id="version-settings-dialog">
+      <div slot="headline">Version settings</div>
+      <div slot="content">
+        <p class="version-settings-name" id="version-settings-name"></p>
+        <div class="version-settings-field">
+          <span>Java</span>
+          <md-filled-select id="version-settings-java">
+            <md-select-option value="auto">
+              <span slot="headline">Auto — 按版本要求自动选择</span>
+            </md-select-option>
+          </md-filled-select>
+        </div>
+        <div class="version-settings-field">
+          <md-outlined-text-field id="version-settings-memory" type="number" min="512" step="256"
+            label="Memory (MB)" placeholder="留空使用默认 1024"></md-outlined-text-field>
+        </div>
+        <p class="version-settings-hint">留空的项目沿用全局设置（Settings → Java）与后端默认值。</p>
+      </div>
+      <div slot="actions">
+        <md-filled-tonal-button id="version-settings-cancel">Cancel</md-filled-tonal-button>
+        <md-filled-button id="version-settings-save">Save</md-filled-button>
       </div>
     </md-dialog>
     <script type="module" src="./src/js/home.js"></script>

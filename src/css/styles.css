@@ -59,6 +59,8 @@ img {
     --md-sys-color-surface-container-highest: #2b3236;
     --md-sys-color-on-surface: #e1e3e5;
     --md-sys-color-primary: #3EEDE7;
+    /* 亮青主色需要深色前景；material 默认 on-primary 是白色，对比度不够 */
+    --md-sys-color-on-primary: #052321;
     --md-sys-color-outline-variant: #3f484a;
 
     /* Tonal Button 容器色与文本色 (深色模式) */
@@ -77,6 +79,8 @@ img {
     --md-sys-color-surface-container-highest: #e0eae6;
     --md-sys-color-on-surface: #171d1c;
     --md-sys-color-primary: #006a60;
+    /* 深青主色配白字 */
+    --md-sys-color-on-primary: #ffffff;
     --md-sys-color-outline-variant: #bec9c6;
 
     /* Tonal Button 容器色与文本色 (浅色模式) */

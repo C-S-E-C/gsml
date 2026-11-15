@@ -368,7 +368,22 @@ pub(crate) fn lib_allowed(lib: &Value) -> bool {
     let mut allowed = false;
     for r in rules {
         let os_ok = r["os"]["name"].as_str().map_or(true, |n| n == "windows");
-        if !os_ok {
+        // os.arch：Mojang 用它区分 natives 的 x86 / arm64 变体，
+        // 忽略它会把别的架构的本地库也塞进 classpath
+        let arch_ok = match r["os"]["arch"].as_str() {
+            None => true,
+            Some("x86") => cfg!(target_arch = "x86"),
+            Some("x86_64") | Some("amd64") => cfg!(target_arch = "x86_64"),
+            Some("arm") | Some("arm32") => cfg!(target_arch = "arm"),
+            Some("arm64") | Some("aarch64") => cfg!(target_arch = "aarch64"),
+            Some(_) => true,
+        };
+        // features：本启动器不启用任何 feature（demo/自定义分辨率/quick play）
+        let feat_ok = match r["features"].as_object() {
+            None => true,
+            Some(f) => f.iter().all(|(_k, v)| !v.as_bool().unwrap_or(false)),
+        };
+        if !(os_ok && arch_ok && feat_ok) {
             continue;
         }
         if r["action"].as_str() == Some("allow") {

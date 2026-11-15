@@ -1008,18 +1008,32 @@ async function setupLaunchMenu() {
             await launchVerSelect.updateComplete;
         }
     }
-    launchBtn.disabled = !first;
+    setLaunchEnabled(!!first);
     syncLaunchIcon();
 
     launchVerSelect.addEventListener('change', () => {
-        launchBtn.disabled = !launchVerSelect.value;
+        setLaunchEnabled(!!launchVerSelect.value);
         syncLaunchIcon();
     });
 
-    // 启动 / 停止。
+    // 启动 / 停止：运行中点击同一颗 FAB 即停止游戏。
     launchBtn.addEventListener('click', async () => {
         if (launchStatus.running) {
+            // 停止只是一次后端调用；视觉状态由随后到达的 stopped 事件切换。
+            // 这里不长期禁用按钮：stop_game 幂等，连点无副作用，
+            // 也避免事件丢失时按钮永久禁用。
+            setLaunchEnabled(false);
+            try {
+                await invokeFn('stop_game');
+            } catch (error) {
+                console.error('stop game failed', error);
+            } finally {
+                setLaunchEnabled(true);
+            }
             return;
+        }
+        if (launchBtn.getAttribute('aria-disabled') === 'true') {
+            return; // 键盘激活也走这里：无版本 / 启动中都不可重复触发
         }
         if (!launchVerSelect.value) {
             return;
@@ -1027,22 +1041,28 @@ async function setupLaunchMenu() {
         if (selectedAccountId == null) {
             return;
         }
-        // 打开进度 dialog（非日志），进入运行态前先禁用按钮。
+        // 打开进度 dialog（非日志），进入运行态前先置为不可点。
         launchRunning(false);
-        launchBtn.disabled = true;
+        setLaunchEnabled(false);
         openLaunchProgress();
+        const versionId = launchVerSelect.value;
         try {
-            // 读取设置页保存的自定义 Java（键 'java-path'），空值则走后端自动检测。
-            const savedJava = await invokeFn('get_svar', { key: 'java-path' }).catch(() => null);
+            // Java/内存优先级：版本覆盖 > 设置页全局 java-path > 后端按版本
+            // JSON 的 javaVersion 自动挑选；内存未设置则用后端默认值。
+            const [perVersion, globalJava] = await Promise.all([
+                readVersionSettings(versionId),
+                invokeFn('get_svar', { key: 'java-path' }).catch(() => null),
+            ]);
             await invokeFn('launch_game', {
-                versionId: launchVerSelect.value,
+                versionId,
                 accountId: selectedAccountId,
-                javaPath: savedJava || null,
+                javaPath: perVersion.javaPath
+                    || (typeof globalJava === 'string' ? globalJava : null),
+                memoryMb: perVersion.memoryMb || undefined,
             });
         } catch (error) {
             // 不做 close→show：md-dialog 关闭动画进行中立刻 show() 会被收尾的
             // 关闭动画覆盖，报错弹窗会一闪而过。dialog 已打开时原地切换为错误模式。
-            launchBtn.disabled = false;
             launchRunning(false);
             showLaunchError('启动失败', error);
             console.error('launch failed', error);
@@ -1061,7 +1081,7 @@ async function setupLaunchMenu() {
             }
             openLaunchProgress();
         } else if (status === 'running') {
-            // 启动完成：关闭进度 dialog，显示「停止游戏」并保持 Launch 禁用。
+            // 启动完成：关闭进度 dialog，FAB 切为 Stop 态（点击即停止游戏）。
             closeLaunchProgress();
             launchRunning(true);
         } else if (status === 'stopped') {
@@ -1091,6 +1111,12 @@ const gameOutputBuffer = [];
 const launchStatus = { running: false, statusEl: null, lastText: null };
 
 // 打开/更新启动进度 dialog（进度模式：显示进度条 + 状态文字）
+// 弹窗打开期间锁住页面滚动：否则背景滚动容器的滚动条会一直挂在边上，
+// 与弹窗内的日志滚动条混在一起（视觉上像「弹窗里有多条滚动条」）。
+function setPageScrollLocked(locked) {
+    document.body.classList.toggle('dialog-open', locked);
+}
+
 function openLaunchProgress() {
     const dialog = document.getElementById('launch-progress-dialog');
     const statusEl = document.getElementById('launch-dialog-status');
@@ -1098,6 +1124,7 @@ function openLaunchProgress() {
         statusEl.textContent = launchStatus.lastText || '正在启动…';
     }
     setDialogMode(false); // 进度模式
+    setPageScrollLocked(true);
     if (dialog && !dialog.open) {
         void dialog.show();
     }
@@ -1139,6 +1166,7 @@ function showLaunchError(title, payload) {
     const tail = isStructured && typeof payload.tail === 'string' ? payload.tail : '';
 
     setDialogMode(true);
+    setPageScrollLocked(true);
     const titleEl = document.getElementById('launch-dialog-title');
     if (titleEl) {
         titleEl.textContent = title || '启动失败';
@@ -1223,6 +1251,21 @@ function showLaunchError(title, payload) {
     }
 
     const dialog = document.getElementById('launch-progress-dialog');
+
+    // 关闭按钮：错误弹窗的显式关闭入口。它嵌在 <div slot="actions"> 里，
+    // Material 的 cancel 槽位内置关闭在这里并不可靠，故直接接事件强制收尾：
+    // 先隐藏错误内容绕过 closeLaunchProgress 的「报错展示中不自动关闭」保护，
+    // 再关闭弹窗（与「前往设置」按钮同一套收尾路径）。
+    const closeBtn = document.getElementById('launch-dialog-close');
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            const errorEl = document.getElementById('launch-dialog-error');
+            if (errorEl) errorEl.hidden = true;
+            if (dialog?.open) void dialog.close();
+            setPageScrollLocked(false);
+        };
+    }
+
     if (dialog && !dialog.open) {
         void dialog.show();
     }
@@ -1260,18 +1303,163 @@ function closeLaunchProgress() {
     if (dialog?.open) {
         void dialog.close();
     }
+    setPageScrollLocked(false);
+}
+
+// md-branded-fab 并不支持 disabled（组件没有该属性，赋值只会落在自定义
+// 属性上、毫无效果），因此用 aria-disabled + CSS 表达「当前不可点」，
+// 点击/键盘激活处也显式判一次，避免启动中重复 invoke。
+function setLaunchEnabled(enabled) {
+    const btn = document.getElementById('launch-btn');
+    if (!btn) return;
+    if (enabled) {
+        btn.removeAttribute('aria-disabled');
+    } else {
+        btn.setAttribute('aria-disabled', 'true');
+    }
 }
 
 function launchRunning(running) {
     launchStatus.running = running;
     const btn = document.getElementById('launch-btn');
     if (btn) {
-        btn.disabled = running; // 运行中禁点；停止靠「停止游戏」按钮
+        // 运行中不禁用：同一颗 FAB 变成「停止游戏」，点击即调用 stop_game；
+        // 空闲态维持原规则——没选版本就不可点。
+        setLaunchEnabled(running || !!document.getElementById('launch-ver-select')?.value);
+        btn.label = running ? 'Stop' : 'Launch';
+        btn.setAttribute('aria-label', running ? 'Stop game' : 'Launch game');
+        btn.toggleAttribute('running', running);
         const icon = btn.querySelector('md-icon') || null;
         if (icon) {
             icon.textContent = running ? 'stop_circle' : 'play_arrow';
         }
     }
+    // 运行中不允许切换版本，避免下拉框与已启动的实例状态不一致。
+    const select = document.getElementById('launch-ver-select');
+    if (select) {
+        select.disabled = running;
+    }
+}
+
+// ── Version settings（单版本 Java / 内存覆盖）────────────────────────────
+// 覆盖值按版本分别存 svar：java-path:<版本> / memory-mb:<版本>。
+// 未设置的项回落到设置页的全局 java-path 与后端默认内存（1024 MB）。
+const versionJavaKey = (version) => `java-path:${version}`;
+const versionMemoryKey = (version) => `memory-mb:${version}`;
+
+let javaRuntimesCache = null;
+
+async function loadJavaRuntimes() {
+    if (javaRuntimesCache) {
+        return javaRuntimesCache;
+    }
+    try {
+        const list = await invokeFn('list_java_installations');
+        javaRuntimesCache = Array.isArray(list) ? list : [];
+    } catch (error) {
+        console.error('list java installations failed', error);
+        javaRuntimesCache = [];
+    }
+    return javaRuntimesCache;
+}
+
+/** 读取某版本的覆盖配置（未设置/非法值为 null）。 */
+async function readVersionSettings(version) {
+    const [java, memory] = await Promise.all([
+        invokeFn('get_svar', { key: versionJavaKey(version) }).catch(() => null),
+        invokeFn('get_svar', { key: versionMemoryKey(version) }).catch(() => null),
+    ]);
+    return {
+        javaPath: typeof java === 'string' && java.trim() ? java.trim() : null,
+        memoryMb: typeof memory === 'number' && memory >= 512 ? memory : null,
+    };
+}
+
+function setupVersionSettings() {
+    const dialog = document.getElementById('version-settings-dialog');
+    const gear = document.getElementById('version-settings-btn');
+    const saveBtn = document.getElementById('version-settings-save');
+    const cancelBtn = document.getElementById('version-settings-cancel');
+    const javaSelect = document.getElementById('version-settings-java');
+    const memoryInput = document.getElementById('version-settings-memory');
+    const nameEl = document.getElementById('version-settings-name');
+    if (!dialog || !gear || !saveBtn || !javaSelect || !memoryInput) {
+        return;
+    }
+
+    let editingVersion = '';
+
+    cancelBtn?.addEventListener('click', () => {
+        if (dialog.open) {
+            void dialog.close();
+        }
+    });
+
+    gear.addEventListener('click', async () => {
+        const versionSelect = document.getElementById('launch-ver-select');
+        const version = versionSelect?.value || '';
+        if (!version) {
+            return;
+        }
+        editingVersion = version;
+        if (nameEl) {
+            nameEl.textContent = version;
+        }
+
+        // Java 候选：Auto + 本机扫描结果（Auto 交给后端按 javaVersion 挑）。
+        const runtimes = await loadJavaRuntimes();
+        javaSelect.innerHTML = [
+            `<md-select-option value="auto">
+                <span slot="headline">Auto — 按版本要求自动选择</span>
+            </md-select-option>`,
+            ...runtimes.map((rt) => `
+                <md-select-option value="${escapeHtml(rt.path)}">
+                    <span slot="headline">${escapeHtml(
+                        `${rt.version || '?'} · ${rt.vendor || 'Java'}${rt.kind === 'JDK' ? '' : ' (JRE)'}`,
+                    )}</span>
+                </md-select-option>`),
+        ].join('');
+        // 选项完成首渲染后赋 value，否则关闭态 displayText 会是空（见 setupLaunchMenu 注释）。
+        await Promise.all(
+            [...javaSelect.querySelectorAll('md-select-option')].map((opt) => opt.updateComplete),
+        );
+
+        const current = await readVersionSettings(version);
+        const wanted = current.javaPath || 'auto';
+        javaSelect.value = wanted;
+        await javaSelect.updateComplete;
+        if (javaSelect.value !== wanted) {
+            javaSelect.value = wanted;
+            await javaSelect.updateComplete;
+        }
+        memoryInput.value = current.memoryMb ? String(current.memoryMb) : '';
+
+        if (!dialog.open) {
+            void dialog.show();
+        }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        if (!editingVersion) {
+            return;
+        }
+        saveBtn.disabled = true;
+        try {
+            const pick = javaSelect.value;
+            const javaPath = !pick || pick === 'auto' ? null : pick;
+            const parsed = Number.parseInt(memoryInput.value, 10);
+            const memoryMb = Number.isFinite(parsed) && parsed >= 512 ? parsed : null;
+            await invokeFn('set_svar', { key: versionJavaKey(editingVersion), value: javaPath });
+            await invokeFn('set_svar', { key: versionMemoryKey(editingVersion), value: memoryMb });
+            if (dialog.open) {
+                void dialog.close();
+            }
+        } catch (error) {
+            console.error('save version settings failed', error);
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
@@ -1284,6 +1472,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupAddAccountDialog();
     setupRemoveAccount();
     setupSkinCapeControls();
+    setupVersionSettings();
+    // md-dialog 可能被 Esc / 点击遮罩关闭，确保滚动锁总能解开
+    document
+        .getElementById('launch-progress-dialog')
+        ?.addEventListener('close', () => setPageScrollLocked(false));
     void setupLaunchMenu();
     await refreshAccounts();
 });

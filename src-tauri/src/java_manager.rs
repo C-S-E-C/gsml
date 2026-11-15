@@ -85,7 +85,7 @@ fn version_token(line: &str) -> String {
 }
 
 /// 运行 `<exe> --version` 解析版本号与发行名（老 Java 8 自动回退 -version）。
-fn probe_java(exe: &Path) -> Option<(String, String)> {
+pub(crate) fn probe_java(exe: &Path) -> Option<(String, String)> {
     let (version, first) = probe_java_line(exe)?;
     // 发行名：先用路径片段匹配常见发行版；退而用输出首行首词。
     let vendor = vendor_from_path(exe).unwrap_or_else(|| {
@@ -203,8 +203,36 @@ fn candidate_roots() -> Vec<(PathBuf, &'static str)> {
     roots
 }
 
+/// 从 root 起按深度优先找「含 java 可执行文件」的 home 目录，最多下钻
+/// max_depth 层；命中即停止下钻（避免把 JDK 内部的 jre/ 再算一份）。
+/// 用于 Mojang 自带运行时这类层级更深的目录：
+///   runtime/<组件>/<平台>/<组件>/bin/java[.exe]
+/// 返回 (home, exe)。
+fn collect_homes(root: &Path, max_depth: usize) -> Vec<(PathBuf, PathBuf)> {
+    let mut out = Vec::new();
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        if let Some(exe) = exe_in_home(&dir) {
+            out.push((dir, exe));
+            continue;
+        }
+        if depth >= max_depth {
+            continue;
+        }
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let child = entry.path();
+                if child.is_dir() {
+                    stack.push((child, depth + 1));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// 扫描所有候选目录，返回去重后的可用 Java 列表（尽力而为，从不报错）。
-fn scan_java_installations() -> Vec<JavaRuntime> {
+pub(crate) fn scan_java_installations() -> Vec<JavaRuntime> {
     // 与 find_java(None) 对齐，标出「当前默认」的那一个。
     let default_path = crate::minecraft_manager::find_java(None)
         .map(|p| normalize_path(&p))
@@ -253,6 +281,34 @@ fn scan_java_installations() -> Vec<JavaRuntime> {
                 &mut seen,
                 &mut out,
             );
+        }
+    }
+
+    // Mojang 自带的运行时（.minecraft/runtime/<组件>/<平台>/<组件>）：
+    // 不在 PATH、也不在常见安装目录，但完全可用于启动游戏（很多机器上
+    // 只有这一份 Java）。层级比普通安装深，单独按 3 层深度扫，
+    // 其余候选目录仍维持「只看一层子目录」，避免在大目录上做全树递归。
+    if let Ok(mc_dir) = crate::minecraft_manager::get_minecraft_dir() {
+        let runtime_root = mc_dir.join("runtime");
+        if runtime_root.is_dir() {
+            for (home, exe) in collect_homes(&runtime_root, 3) {
+                let Some((version, vendor)) = probe_java(&exe) else { continue };
+                let path = normalize_path(&exe);
+                let is_default = !default_path.is_empty() && path == default_path;
+                push_runtime(
+                    JavaRuntime {
+                        path,
+                        home: normalize_path(&home),
+                        version,
+                        vendor,
+                        kind: if is_jdk(&exe) { "JDK" } else { "JRE" }.to_string(),
+                        source: "Minecraft 运行时".to_string(),
+                        is_default,
+                    },
+                    &mut seen,
+                    &mut out,
+                );
+            }
         }
     }
 

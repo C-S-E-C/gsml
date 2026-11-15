@@ -7,6 +7,8 @@ body {
     display: flex;
     flex-direction: row;
     font-family: var(--md-ref-typeface-brand);
+    /* 账号列表列宽：底栏/状态行都按它让位，避免各自写魔法数字 */
+    --home-sidebar-width: 240px;
 }
 
 /* ── Accounts sidebar (账号选择) ─────────────────────────── */
@@ -15,8 +17,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    width: 240px;
-    min-width: 240px;
+    width: var(--home-sidebar-width);
+    min-width: var(--home-sidebar-width);
     height: 100%;
     box-sizing: border-box;
     background-color: var(--md-sys-color-surface-container-lowest);
@@ -76,12 +78,40 @@ body {
     left: 16px;
     bottom: 16px;
     z-index: 10;
-    --md-elevated-button-container-color: var(--md-sys-color-surface-container-highest);
-    --md-elevated-button-label-text-color: var(--md-sys-color-on-primary);
+
+    /* 容器色改由宿主（light DOM）负责：组件内部只在 md-ripple 里叠 8% 的
+       state layer，自带 transition 仅 15ms（几乎看不到），外部也改不了它。
+       把内部 surface 设透明后，hover 变色就能用 background-color +
+       transition 平滑过渡。 */
+    --md-elevated-button-container-color: transparent;
+    --md-elevated-button-hover-state-layer-opacity: 0;
+    --md-elevated-button-pressed-state-layer-opacity: 0.12;
     --md-elevated-button-hover-state-layer-color: var(--md-sys-color-primary);
-    --md-elevated-button-icon-color: var(--md-sys-color-on-primary);
+    --md-elevated-button-pressed-state-layer-color: var(--md-sys-color-primary);
+
+    background-color: var(--md-sys-color-surface-container-highest);
+    border-radius: var(--md-sys-shape-corner-full, 9999px);
+    transition: background-color 160ms ease;
+    /* 内部容器与宿主同高：否则文字/涟漪按 40px 居中，会贴在 48px 胶囊的上方 */
+    --md-elevated-button-container-height: 48px;
+
+    /* 容器是中性 surface，文字/图标用 on-surface。
+       （on-primary 是配主色容器用的，暗色主题下是深色，放这里几乎看不清） */
+    --md-elevated-button-label-text-color: var(--md-sys-color-on-surface);
+    --md-elevated-button-focus-label-text-color: var(--md-sys-color-on-surface);
+    --md-elevated-button-hover-label-text-color: var(--md-sys-color-on-surface);
+    --md-elevated-button-pressed-label-text-color: var(--md-sys-color-on-surface);
+    --md-elevated-button-icon-color: var(--md-sys-color-on-surface);
+    --md-elevated-button-hover-icon-color: var(--md-sys-color-on-surface);
+    --md-elevated-button-focus-icon-color: var(--md-sys-color-on-surface);
     font-weight: bolder;
     cursor: pointer;
+}
+
+/* hover：在中性容器上掺一点主色，观感接近原来的 state layer，但可过渡 */
+.sidebar #add-account-btn:hover {
+    background-color: var(--md-sys-color-surface-container-highest);
+    background-color: color-mix(in srgb, var(--md-sys-color-surface-container-highest) 88%, var(--md-sys-color-primary));
 }
 
 /* ── Main panel ─────────────────────────────────────────── */
@@ -322,13 +352,28 @@ body {
 
 .start-mc {
     position: fixed;
-    bottom: 0;
+    /* 只覆盖右侧主内容区，避免压住左侧账号列表（sidebar 在正常流里，
+       fixed 底栏会盖在它上面） */
+    left: var(--home-sidebar-width);
     right: 0;
-    width: calc(100% - 280px);
+    bottom: 0;
     height: 75px;
-    background-color: transparent;
-    padding: 0 20px 0 20px;
+    width: parent;
+    box-sizing: border-box;
+    /* 底栏内所有控件（下拉框 + 两个 FAB）共用一个高度，永远对齐 */
+    --dock-control-height: 52px;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
     gap: 10px;
+    padding: 0 20px;
+    /* 玻璃质感 dock：内容滚动到其下方时控件边界依然清晰 */
+    background-color: var(--md-sys-color-surface-container);
+    background-color: color-mix(in srgb, var(--md-sys-color-surface-container) 82%, transparent);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    border-top-color: color-mix(in srgb, var(--md-sys-color-outline-variant) 55%, transparent);
     --md-sys-shape-corner-large: 16px;
     --md-sys-shape-corner-extra-small: 16px;
     --md-sys-shape-corner-none: 16px;
@@ -341,7 +386,11 @@ body {
 }
 
 .start-mc md-filled-select {
-    width: calc(80% - 10px);
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    /* 与两侧 FAB 同高 */
+    --md-filled-select-text-field-container-height: var(--dock-control-height);
     /* 字段左侧 leading icon 尺寸，与下方 .start-mc img 的 30px 一致 */
     --md-filled-select-text-field-leading-icon-size: 30px;
 }
@@ -350,8 +399,88 @@ body {
    本主题未定义 --md-sys-color-secondary-container，material 会回落到
    硬编码浅紫 #e8def8，与整体配色不符，这里显式覆盖。 */
 
-.start-mc md-fab {
-    width: 80%;
+/* ── Dock 上的 FAB ────────────────────────────────────────────────────
+   md-branded-fab 的尺寸/配色全部走 --md-fab-branded-* token；
+   文字标签由 label 属性渲染（extended 形态），图标走 icon 槽。 */
+
+/* 版本设置：与主 CTA 同尺寸同圆角，靠中性配色区分主次 */
+#version-settings-btn {
+    flex: 0 0 auto;
+    --md-fab-branded-container-height: var(--dock-control-height);
+    /* 正方形：宽度跟随同一高度 */
+    --md-fab-branded-container-width: var(--dock-control-height);
+    --md-fab-branded-icon-size: 24px;
+    --md-fab-branded-container-shape: 16px;
+    --md-fab-branded-container-color: var(--md-sys-color-surface-container-highest);
+    --md-fab-branded-container-elevation: 1;
+    --md-fab-branded-hover-container-elevation: 3;
+    --md-fab-branded-hover-state-layer-color: var(--md-sys-color-on-surface);
+    --md-fab-branded-pressed-state-layer-color: var(--md-sys-color-on-surface);
+}
+
+#version-settings-btn md-icon {
+    --md-icon-size: 22px;
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+}
+
+/* 主 CTA：主色填充 + 主色阴影光晕，hover 上浮、按下微缩 */
+#launch-btn {
+    flex: 0 0 auto;
+    --md-fab-branded-container-height: var(--dock-control-height);
+    --md-fab-branded-container-color: var(--md-sys-color-primary);
+    --md-fab-branded-label-text-color: var(--md-sys-color-on-primary);
+    --md-fab-branded-hover-label-text-color: var(--md-sys-color-on-primary);
+    --md-fab-branded-focus-label-text-color: var(--md-sys-color-on-primary);
+    --md-fab-branded-pressed-label-text-color: var(--md-sys-color-on-primary);
+    --md-fab-branded-label-text-size: 0.95rem;
+    --md-fab-branded-label-text-weight: 700;
+    --md-fab-branded-icon-size: 24px;
+    --md-fab-branded-container-shape: 16px;
+    --md-fab-branded-container-elevation: 2;
+    --md-fab-branded-hover-container-elevation: 5;
+    --md-fab-branded-hover-state-layer-color: var(--md-sys-color-on-primary);
+    --md-fab-branded-pressed-state-layer-color: var(--md-sys-color-on-primary);
+    /* 先给不支持 color-mix 的旧内核一个透明回退，再叠加主色光晕 */
+    --md-fab-branded-container-shadow-color: transparent;
+    --md-fab-branded-container-shadow-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
+    transition: transform 150ms cubic-bezier(0.2, 0, 0, 1), opacity 150ms ease;
+}
+
+#launch-btn:hover:not([aria-disabled='true']) {
+    transform: translateY(-1px);
+}
+
+#launch-btn:active:not([aria-disabled='true']) {
+    transform: translateY(0) scale(0.98);
+}
+
+/* 无版本 / 启动中：置灰且不响应指针（键盘激活由 JS 的 aria-disabled 判定兜住）。
+   md-branded-fab 没有 disabled 支持，故用 aria-disabled 表达同一语义。 */
+#launch-btn[aria-disabled='true'] {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+#launch-btn md-icon {
+    --md-icon-size: 24px;
+    color: var(--md-sys-color-on-primary);
+}
+
+/* 运行中：同一颗按钮变成「停止游戏」，换成错误色系以示语义反转 */
+#launch-btn[running] {
+    --md-fab-branded-container-color: var(--md-error-tonal-button-container-color);
+    --md-fab-branded-label-text-color: var(--md-error-tonal-button-label-text-color);
+    --md-fab-branded-hover-label-text-color: var(--md-error-tonal-button-label-text-color);
+    --md-fab-branded-focus-label-text-color: var(--md-error-tonal-button-label-text-color);
+    --md-fab-branded-pressed-label-text-color: var(--md-error-tonal-button-label-text-color);
+    --md-fab-branded-hover-state-layer-color: var(--md-error-tonal-button-label-text-color);
+    --md-fab-branded-pressed-state-layer-color: var(--md-error-tonal-button-label-text-color);
+    --md-fab-branded-container-shadow-color: transparent;
+    --md-fab-branded-container-shadow-color: color-mix(in srgb, var(--md-error-tonal-button-container-color) 70%, transparent);
+}
+
+#launch-btn[running] md-icon {
+    color: var(--md-error-tonal-button-label-text-color);
 }
 
 .start-mc img {
@@ -371,7 +500,7 @@ body {
     position: fixed;
     bottom: 84px;
     right: 20px;
-    left: 260px;
+    left: calc(var(--home-sidebar-width) + 20px);
     z-index: 20;
     font-size: 0.9rem;
     color: var(--md-sys-color-on-surface-variant);
@@ -383,13 +512,7 @@ body {
     line-height: 1.4;
 }
 
-/* 「停止游戏」按钮贴近 Launch FAB */
-#launch-stop {
-    margin-left: 10px;
-    --md-filled-tonal-button-container-color: var(--md-error-tonal-button-container-color);
-    --md-filled-tonal-button-label-text-color: var(--md-sys-color-on-error-container);
-    font-weight: bolder;
-}
+/* 运行中的「停止游戏」入口就是 launch-btn 本身（见上方 #launch-btn[running]） */
 
 /* 启动进度 dialog 文案 */
 .launch-dialog-status {
@@ -398,14 +521,23 @@ body {
     color: var(--md-sys-color-on-surface);
 }
 
+/* 启动弹窗打开期间锁住页面滚动（home.js 切换 body.dialog-open）：
+   否则背景滚动容器的滚动条会一直挂在弹窗边上，看起来像弹窗自身多了一条 */
+body.dialog-open .account-page {
+    overflow: hidden;
+}
+
 /* 启动报错：中性容器，红只出现在摘要文字上 */
 .launch-dialog-error {
     margin: 16px 0 0;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-height: 340px;
+    max-height: 380px;
     box-sizing: border-box;
+    /* 只有日志区自己滚动；这里再滚就会多出滚动条，
+       也会让「复制日志」等操作行跑到可视区外 */
+    overflow: hidden;
 }
 
 .launch-error-summary {
@@ -416,6 +548,11 @@ body {
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
+    /* 最长 3 行：摘要再长会把日志和操作行往下顶（完整文本仍可用「复制日志」拿到） */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .launch-error-meta {
@@ -437,8 +574,14 @@ body {
 .launch-error-log {
     margin: 0;
     padding: 10px 14px;
-    max-height: 200px;
+    /* 全弹窗唯一可滚动的地方；高度压到 140px（原 200px），
+       窗口矮时再按 26vh 收缩，避免把下面的「复制日志」推出可视区 */
+    max-height: min(140px, 26vh);
+    min-height: 40px;
     overflow: auto;
+    /* 空间不够时先收缩日志区（内部滚动），摘要/元信息/操作行保持常驻可见 */
+    flex: 0 1 auto;
+    min-height: 0;
     border-radius: var(--md-sys-shape-corner-medium, 12px);
     background-color: var(--md-sys-color-surface-container-highest);
     color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
@@ -459,6 +602,55 @@ body {
 #launch-progress-dialog [slot="content"] {
     min-width: 420px;
     max-width: 560px;
+    /* 内容区本身永不产出滚动条：整个弹窗只允许 pre.launch-error-log 滚动 */
+    overflow: hidden;
+}
+
+/* Material Web 组件自带 :host display 规则（作者样式），会盖过浏览器对
+   [hidden] 的 UA 样式，导致 hidden 属性失效：错误模式下进度条关不掉、
+   关闭/前往设置按钮本应隐藏却仍然显示。这里对启动弹窗内的元素显式补上。 */
+#launch-progress-dialog [hidden] {
+    display: none !important;
+}
+
+/* ── Version settings dialog（单版本 Java / 内存覆盖） ── */
+#version-settings-dialog [slot="content"] {
+    min-width: 420px;
+    max-width: 520px;
+    box-sizing: border-box;
+}
+
+.version-settings-name {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface);
+    word-break: break-all;
+}
+
+.version-settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+}
+
+.version-settings-field > span {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+}
+
+.version-settings-field md-filled-select,
+.version-settings-field md-outlined-text-field {
+    width: 100%;
+}
+
+.version-settings-hint {
+    margin: 14px 0 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
 }
 
 @keyframes fadeIn {
