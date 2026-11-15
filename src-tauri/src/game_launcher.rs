@@ -199,6 +199,7 @@ pub fn launch_game(
     account_id: u16,
     java_path: Option<String>,
     memory_mb: Option<u32>,
+    server: Option<String>,
 ) -> Result<(), String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
         return Err("已有游戏正在启动/运行，请先停止".to_string());
@@ -234,6 +235,7 @@ pub fn launch_game(
                 &resolved.2,
                 java_path.as_deref(),
                 memory_mb,
+                server.as_deref(),
             )
         }));
         let result = match launch_res {
@@ -561,6 +563,48 @@ fn java_exe_name() -> &'static str {
     }
 }
 
+/// 从版本名解析主/次版本号（"1.20.1" → (1,20)；快照/非标准返回 None）。
+fn version_major_minor(version_id: &str) -> Option<(u32, u32)> {
+    let core = version_id
+        .split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .find(|s| !s.is_empty())?;
+    let mut parts = core.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let minor: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    Some((major, minor))
+}
+
+/// 「启动即进服」参数。1.20+ 用 `--quickPlayMultiplayer host:port`，
+/// 更早的版本用 `--server host --port port`（后者在 1.20 起不再生效）。
+/// 版本号优先用基底版本（effective_base），这样重命名过的整合包也能判断对。
+fn multiplayer_args(version_id: &str, server: &str) -> Vec<String> {
+    let (host, port) = match server.rsplit_once(':') {
+        Some((h, p)) if !h.is_empty() && !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => {
+            (h.to_string(), p.to_string())
+        }
+        _ => (server.to_string(), "25565".to_string()),
+    };
+    if host.is_empty() {
+        return Vec::new();
+    }
+    // 1.20+ 与快照（24w14a / 26.2-snapshot-1）走 quickPlay；老版本走 --server
+    let modern = match version_major_minor(version_id) {
+        Some((1, minor)) => minor >= 20,
+        Some((major, _)) => major > 1,
+        None => false,
+    };
+    if modern {
+        vec!["--quickPlayMultiplayer".to_string(), format!("{host}:{port}")]
+    } else {
+        vec![
+            "--server".to_string(),
+            host,
+            "--port".to_string(),
+            port,
+        ]
+    }
+}
+
 fn launch_blocking(
     app: &AppHandle,
     version_id: &str,
@@ -569,6 +613,7 @@ fn launch_blocking(
     access_token: &str,
     java_path: Option<&str>,
     memory_mb: u32,
+    server: Option<&str>,
 ) -> Result<(), String> {
     let root = minecraft_manager::get_minecraft_dir()?;
 
@@ -752,6 +797,10 @@ fn launch_blocking(
         if seen.insert(expanded.clone()) {
             args.push(expanded);
         }
+    }
+    // 「启动即进服」：deeplink start-game 传入的 server（用基底版本判断参数形态）
+    if let Some(server) = server.map(str::trim).filter(|s| !s.is_empty()) {
+        args.extend(multiplayer_args(&effective_base, server));
     }
 
     let note = java_note.as_deref().unwrap_or("");

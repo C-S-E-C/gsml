@@ -1040,44 +1040,72 @@ async function setupLaunchMenu() {
         if (launchBtn.getAttribute('aria-disabled') === 'true') {
             return; // 键盘激活也走这里：无版本 / 启动中都不可重复触发
         }
+        await doLaunch(null);
+    });
+
+    /**
+     * 启动当前选中版本。`server` 非空时同时让游戏直接进服
+     * （deeplink start-game 用；1.20+ 走 quickPlayMultiplayer）。
+     */
+    async function doLaunch(server) {
         if (!launchVerSelect.value) {
             return;
         }
         if (selectedAccountId == null) {
+            showLaunchError('启动失败', '请先添加并选择一个账号。');
             return;
         }
         const versionId = launchVerSelect.value;
         console.log('launch', versionId);
         if (versionId === 'Minecraft Bedrock') {
             await openUrl('minecraft://');
-        } else {
-            // 打开进度 dialog（非日志），进入运行态前先置为不可点。
-            launchRunning(false);
-            setLaunchEnabled(false);
-            openLaunchProgress();
-            try {
-                // Java/内存优先级：版本覆盖 > 设置页全局 java-path > 后端按版本
-                // JSON 的 javaVersion 自动挑选；内存未设置则用后端默认值。
-                const [perVersion, globalJava] = await Promise.all([
-                    readVersionSettings(versionId),
-                    invokeFn('get_svar', { key: 'java-path' }).catch(() => null),
-                ]);
-                await invokeFn('launch_game', {
-                    versionId,
-                    accountId: selectedAccountId,
-                    javaPath: perVersion.javaPath
-                        || (typeof globalJava === 'string' ? globalJava : null),
-                    memoryMb: perVersion.memoryMb || undefined,
-                });
-            } catch (error) {
-                // 不做 close→show：md-dialog 关闭动画进行中立刻 show() 会被收尾的
-                // 关闭动画覆盖，报错弹窗会一闪而过。dialog 已打开时原地切换为错误模式。
-                launchRunning(false);
-                showLaunchError('启动失败', error);
-                console.error('launch failed', error);
-            }
+            return;
         }
-    });
+        // 打开进度 dialog（非日志），进入运行态前先置为不可点。
+        launchRunning(false);
+        setLaunchEnabled(false);
+        openLaunchProgress();
+        try {
+            // Java/内存优先级：版本覆盖 > 设置页全局 java-path > 后端按版本
+            // JSON 的 javaVersion 自动挑选；内存未设置则用后端默认值。
+            const [perVersion, globalJava] = await Promise.all([
+                readVersionSettings(versionId),
+                invokeFn('get_svar', { key: 'java-path' }).catch(() => null),
+            ]);
+            await invokeFn('launch_game', {
+                versionId,
+                accountId: selectedAccountId,
+                javaPath: perVersion.javaPath
+                    || (typeof globalJava === 'string' ? globalJava : null),
+                memoryMb: perVersion.memoryMb || undefined,
+                server: server || undefined,
+            });
+        } catch (error) {
+            // 不做 close→show：md-dialog 关闭动画进行中立刻 show() 会被收尾的
+            // 关闭动画覆盖，报错弹窗会一闪而过。dialog 已打开时原地切换为错误模式。
+            launchRunning(false);
+            showLaunchError('启动失败', error);
+            console.error('launch failed', error);
+        }
+    }
+
+    // deeplink start-game：选中指定本地版本后启动（可选自动进服）
+    window.gsmlLaunchFromDeeplink = async (versionName, server) => {
+        const target = localVersions.find((ver) => ver.name === versionName);
+        if (!target) {
+            showLaunchError(
+                '启动失败',
+                `本地没有安装版本「${versionName}」，请先在 Download 页安装。`,
+            );
+            return false;
+        }
+        launchVerSelect.value = versionName;
+        await launchVerSelect.updateComplete;
+        setLaunchEnabled(true);
+        syncLaunchIcon();
+        await doLaunch(server || null);
+        return true;
+    };
 
     // 启动状态事件（launch-status）。启动完成后（running，即 Minecraft 有窗口
     // 后）关闭进度 dialog，并启用「停止游戏」按钮；game-output 只进环形缓冲，
@@ -1487,6 +1515,30 @@ function setupVersionSettings() {
         }
     });
 }
+
+// deeplink start-game：顶层 shell 确认后把动作 postMessage 到本页
+window.addEventListener('message', (event) => {
+    if (event.origin !== location.origin) {
+        return;
+    }
+    const action = event.data?.__gsmlAction;
+    if (!action || action.kind !== 'launch') {
+        return;
+    }
+    // 页面刚加载时 setupLaunchMenu 可能还没跑完（版本列表未就绪），
+    // 这里最多重试 10 次（每次 500ms）。
+    let tries = 0;
+    const run = () => {
+        if (typeof window.gsmlLaunchFromDeeplink === 'function') {
+            void window.gsmlLaunchFromDeeplink(action.version, action.server || '');
+            return;
+        }
+        if (tries++ < 10) {
+            setTimeout(run, 500);
+        }
+    };
+    run();
+});
 
 // ── Init ──────────────────────────────────────────────────────────────
 

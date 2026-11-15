@@ -12,6 +12,7 @@ mod java_manager;
 mod identification_code;
 mod proc_util;
 mod updater;
+mod deep_actions;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -33,6 +34,9 @@ pub fn run() {
             app.manage(database);
 
             // 2) Deeplink
+            // 先注册动作 handler（install-version / start-game）再 init：
+            // init 会立刻分发「启动参数里带来的 URL」，顺序反了会丢事件。
+            deep_actions::init(app.handle());
             deeplink_handler::init(app.handle());
 
             // 3) 开发模式下没有安装器，需要手动把 glow-squid 等 scheme 写进注册表，
@@ -60,6 +64,7 @@ pub fn run() {
             minecraft_manager::cancel_install,
             download_source::probe_download_sources,
             download_source::default_download_sources,
+            deep_actions::deeplink_ready,
             game_launcher::launch_game,
             game_launcher::stop_game,
             game_launcher::is_game_running,

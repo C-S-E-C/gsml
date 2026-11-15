@@ -243,3 +243,15 @@ body {
   line-height: 5px;
   gap: 10px;
 }
+
+/* Deeplink 确认框里的实例列表（多个匹配时让用户挑一个） */
+#deeplink-dialog-choices {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 12px;
+  --md-list-container-color: var(--md-sys-color-surface-container-highest);
+}
+
+#deeplink-dialog-choices md-list-item {
+  cursor: pointer;
+}

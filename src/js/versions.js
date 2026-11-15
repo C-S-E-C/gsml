@@ -46,6 +46,7 @@ let filterKey = 'all';
 let searchQuery = '';
 let currentVersion = null; // 详情视图对应的原版版本
 let installing = false;    // 本页安装锁（与后端 INSTALLING 双保险）
+let pageReady = null;      // initVersionsPage 的 promise（deeplink 转来的安装要等它）
 
 // ── DOM refs ─────────────────────────────────────────────────────────
 
@@ -558,6 +559,56 @@ function bindEvents() {
     void onPageEvent('install-progress', (payload) => onProgress({ payload }));
 }
 
+// ── Deeplink：install-version 转过来的安装请求 ────────────────────────
+// 顶层 shell 弹确认框后，把 {kind:'install', version, loader, loaderVersion, name}
+// postMessage 到本页；这里填好详情视图并直接开始安装（进度复用本页 UI）。
+async function handleDeeplinkInstall(action) {
+    const version = String(action.version || '').trim();
+    if (!version) {
+        return;
+    }
+    const loader = Number(action.loader) || 0;
+    const loaderVersion = String(action.loaderVersion || '').trim();
+    const customName = String(action.name || '').trim();
+
+    if (!remoteVersions.length) {
+        await loadRemote();
+    }
+    let ver = remoteVersions.find((v) => v.name === version);
+    if (!ver) {
+        // 官方清单里没有也允许尝试（后端会给出明确报错）
+        ver = { name: version, type: 0 };
+        remoteVersions.unshift(ver);
+    }
+    await openDetail(ver);
+    if (loader > 0 && loader <= 3) {
+        await setSelectValue($('dl-loader-select'), String(loader));
+        await onLoaderChange(String(loader));
+        if (loaderVersion) {
+            await setSelectValue($('dl-loader-version-select'), loaderVersion);
+        }
+    }
+    if (customName) {
+        $('dl-custom-name').value = customName;
+    }
+    // 只预填、不自动安装：让用户在详情页自己确认 loader / 版本 / 实例名后点 Install
+    $('dl-install-btn')?.focus?.();
+}
+
+window.addEventListener('message', async (event) => {
+    if (event.origin !== location.origin) {
+        return;
+    }
+    const action = event.data?.__gsmlAction;
+    if (!action || action.kind !== 'install') {
+        return;
+    }
+    if (pageReady) {
+        await pageReady;
+    }
+    await handleDeeplinkInstall(action);
+});
+
 async function initVersionsPage() {
     const loaderSelect = $('dl-loader-select');
     const lvSelect = $('dl-loader-version-select');
@@ -576,7 +627,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!isPage('download.html')) {
         return;
     }
-    void initVersionsPage();
+    pageReady = initVersionsPage();
+    void pageReady;
 });
 
 // ── Global bridge ────────────────────────────────────────────────────

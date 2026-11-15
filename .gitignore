@@ -27,4 +27,4 @@ dist-ssr
 .acl-recovery
 acl-recovery
 .tool-versions
-minify_github_release.py
+*.py
