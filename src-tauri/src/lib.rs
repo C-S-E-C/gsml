@@ -10,6 +10,7 @@ mod minecraft_manager;
 mod game_launcher;
 mod java_manager;
 mod identification_code;
+mod proc_util;
 mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -61,6 +62,7 @@ pub fn run() {
             download_source::default_download_sources,
             game_launcher::launch_game,
             game_launcher::stop_game,
+            game_launcher::is_game_running,
             java_manager::list_java_installations,
             java_manager::check_java_path,
             identification_code::get_device_identifier,

@@ -201,7 +201,12 @@ async function renderJavaList() {
     try {
         javaRuntimes = await invokeFn('list_java_installations');
         if (!Array.isArray(javaRuntimes) || javaRuntimes.length === 0) {
-            list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">未检测到已安装的 Java。</div></md-list-item>`;
+            // 后端在游戏运行时会跳过扫描（不起 java -version 进程），这里区分提示
+            const running = await invokeFn('is_game_running').catch(() => false);
+            const text = running
+                ? '游戏运行中，已跳过 Java 扫描（停止游戏后再刷新）。'
+                : '未检测到已安装的 Java。';
+            list.innerHTML = `<md-list-item disabled><div slot="headline" class="java-item-loading">${text}</div></md-list-item>`;
             return;
         }
         list.innerHTML = javaRuntimes.map(javaItemHtml).join('');

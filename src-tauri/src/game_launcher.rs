@@ -39,6 +39,12 @@ pub(crate) fn is_running() -> bool {
     RUNNING.load(Ordering::SeqCst)
 }
 
+/// 前端查询游戏是否在跑（例如「运行中跳过 Java 扫描」的提示）。
+#[tauri::command]
+pub fn is_game_running() -> bool {
+    is_running()
+}
+
 // ── 账号凭据 ───────────────────────────────────────────────────────────
 
 fn find_account_row(
@@ -762,6 +768,8 @@ fn launch_blocking(
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+    // 用 java.exe 启动时不要弹控制台窗口（输出已经通过管道转成 game-output 事件）
+    crate::proc_util::hide_console(&mut cmd);
     #[cfg(unix)]
     unsafe {
         use std::os::unix::process::CommandExt;

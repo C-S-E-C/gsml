@@ -41,7 +41,11 @@ pub struct JavaRuntime {
 /// 返回 (版本号, 输出首行)；首行同时用于推断发行名。
 fn probe_java_line(exe: &Path) -> Option<(String, String)> {
     // Java 9+：--version 输出走 stdout。
-    if let Ok(out) = Command::new(exe).arg("--version").output() {
+    // 隐藏控制台窗口：否则每次探测都会闪一下 cmd（GUI 进程 spawn 控制台程序的默认行为）
+    let mut probe = Command::new(exe);
+    probe.arg("--version");
+    crate::proc_util::hide_console(&mut probe);
+    if let Ok(out) = probe.output() {
         if out.status.success() {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let first = stdout.lines().next().unwrap_or("").trim().to_string();
@@ -52,7 +56,10 @@ fn probe_java_line(exe: &Path) -> Option<(String, String)> {
         }
     }
     // 兜底：-version 输出走 stderr。
-    let out = Command::new(exe).arg("-version").output().ok()?;
+    let mut probe = Command::new(exe);
+    probe.arg("-version");
+    crate::proc_util::hide_console(&mut probe);
+    let out = probe.output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -373,6 +380,12 @@ fn java_exe_name() -> &'static str {
 /// 扫描本机常见位置，列出可用的 Java 运行时（阻塞工作放 spawn_blocking）。
 #[tauri::command]
 pub async fn list_java_installations() -> Result<Vec<JavaRuntime>, String> {
+    // 游戏运行中不做 Java 探测：扫描会给每个已装 Java 起一次 `java -version`，
+    // 在游戏旁边既浪费 CPU/IO 又容易闪窗口。注意这里只拦「设置页/列表」这类
+    // 探测，启动流程里的 select_java 仍然需要扫描结果。
+    if crate::game_launcher::is_running() {
+        return Ok(Vec::new());
+    }
     tauri::async_runtime::spawn_blocking(scan_java_installations)
         .await
         .map_err(|e| format!("Java 扫描任务异常退出: {e}"))

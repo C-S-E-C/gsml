@@ -716,14 +716,17 @@ fn dir_names(dir: &Path) -> HashSet<String> {
 }
 
 fn run_installer(java: &Path, installer: &Path, mc_dir: &Path) -> Result<(), String> {
-    let out = Command::new(java)
-        .args([
-            "-jar",
-            installer.to_string_lossy().as_ref(),
-            "--installClient",
-            mc_dir.to_string_lossy().as_ref(),
-        ])
-        .current_dir(mc_dir)
+    let mut cmd = Command::new(java);
+    cmd.args([
+        "-jar",
+        installer.to_string_lossy().as_ref(),
+        "--installClient",
+        mc_dir.to_string_lossy().as_ref(),
+    ])
+    .current_dir(mc_dir);
+    // 安装器也是控制台程序：不隐藏就会弹出一个 cmd 窗口
+    crate::proc_util::hide_console(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("无法启动 Java（{java:?}）: {e}"))?;
     if !out.status.success() {
@@ -803,7 +806,10 @@ pub(crate) fn find_java(explicit: Option<&str>) -> Result<PathBuf, String> {
             return Ok(exe);
         }
     }
-    if Command::new("java").arg("-version").output()
+    let mut probe = Command::new("java");
+    probe.arg("-version");
+    crate::proc_util::hide_console(&mut probe);
+    if probe.output()
         .map(|o| o.status.success())
         .unwrap_or(false)
     {

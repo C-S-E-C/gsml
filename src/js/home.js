@@ -1355,12 +1355,17 @@ async function loadJavaRuntimes() {
     }
     try {
         const list = await invokeFn('list_java_installations');
-        javaRuntimesCache = Array.isArray(list) ? list : [];
+        const runtimes = Array.isArray(list) ? list : [];
+        // 空结果不缓存：可能是「游戏运行中被跳过」或临时扫描失败，
+        // 下次打开对话框应重新扫描。
+        if (runtimes.length > 0) {
+            javaRuntimesCache = runtimes;
+        }
+        return runtimes;
     } catch (error) {
         console.error('list java installations failed', error);
-        javaRuntimesCache = [];
+        return [];
     }
-    return javaRuntimesCache;
 }
 
 /** 读取某版本的覆盖配置（未设置/非法值为 null）。 */
@@ -1408,6 +1413,17 @@ function setupVersionSettings() {
 
         // Java 候选：Auto + 本机扫描结果（Auto 交给后端按 javaVersion 挑）。
         const runtimes = await loadJavaRuntimes();
+        const hintEl = document.getElementById('version-settings-hint');
+        if (hintEl) {
+            if (runtimes.length > 0) {
+                hintEl.textContent = '留空的项目沿用全局设置（Settings → Java）与后端默认值。';
+            } else {
+                const running = await invokeFn('is_game_running').catch(() => false);
+                hintEl.textContent = running
+                    ? '游戏运行中，已跳过 Java 扫描；停止游戏后重新打开本对话框可看到完整列表。'
+                    : '未检测到已安装的 Java；Auto 会由后端按版本要求挑选。';
+            }
+        }
         javaSelect.innerHTML = [
             `<md-select-option value="auto">
                 <span slot="headline">Auto — 按版本要求自动选择</span>
