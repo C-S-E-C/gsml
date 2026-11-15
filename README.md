@@ -45,7 +45,7 @@ glow-squid://install-version?version=1.20.1&loader=forge&loaderVersion=47.4.0&na
 ### Launch the game
 
 ```
-glow-squid://start-game?version=1.21.1&server=play.example.com:25565
+glow-squid://start-game?version=1.21.1&server=simpcraft.com
 ```
 
 | Parameter | Required | Description |
