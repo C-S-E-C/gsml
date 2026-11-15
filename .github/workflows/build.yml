@@ -370,7 +370,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          MARKER="## 下载"
+          MARKER="## Download"
           REPO="${GITHUB_REPOSITORY}"
 
           BODY="$(gh release view "$TAG" --json body --jq '.body')"
