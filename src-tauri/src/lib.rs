@@ -4,6 +4,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 mod account_manager;
 mod db_handler;
 mod deeplink_handler;
+mod download_source;
 mod skin_manager;
 mod minecraft_manager;
 mod game_launcher;
@@ -56,6 +57,8 @@ pub fn run() {
             minecraft_manager::list_remote_versions,
             minecraft_manager::install_version,
             minecraft_manager::cancel_install,
+            download_source::probe_download_sources,
+            download_source::default_download_sources,
             game_launcher::launch_game,
             game_launcher::stop_game,
             java_manager::list_java_installations,
@@ -64,6 +67,8 @@ pub fn run() {
             updater::check_update,
             updater::download_update,
             updater::apply_update,
+            updater::probe_update_sources,
+            updater::default_update_sources_cmd,
             is_debug,
         ])
         .run(tauri::generate_context!())

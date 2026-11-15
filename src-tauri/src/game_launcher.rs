@@ -34,6 +34,11 @@ use crate::minecraft_manager;
 static RUNNING: AtomicBool = AtomicBool::new(false);
 static CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
+/// 是否有游戏正在启动/运行（供「游戏运行时不测速」等场景判断）。
+pub(crate) fn is_running() -> bool {
+    RUNNING.load(Ordering::SeqCst)
+}
+
 // ── 账号凭据 ───────────────────────────────────────────────────────────
 
 fn find_account_row(

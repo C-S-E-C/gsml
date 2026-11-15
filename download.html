@@ -13,6 +13,8 @@
       <!-- 视图 1：远程版本列表（可搜索 + 类型筛选，一次性全部加载） -->
       <section id="dl-browser">
         <h1>Download</h1>
+        <!-- 下载源在 Settings → Download 里配置；这里只显示本次用的是哪个源 -->
+        <p class="dl-source-hint muted" id="dl-source-hint"></p>
         <div class="dl-toolbar">
           <md-outlined-text-field
             id="dl-search"

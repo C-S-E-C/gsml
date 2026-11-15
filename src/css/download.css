@@ -180,3 +180,153 @@
     margin: 0;
     min-height: 1.2em;
 }
+
+/* ── 下载源（测速 / 按延迟排序 / 可自定义） ─────────────────────────── */
+
+.dl-sources {
+    margin: 16px 0 20px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background-color: var(--md-sys-color-surface-container-high);
+    box-sizing: border-box;
+}
+
+.dl-sources-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dl-sources-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface);
+}
+
+.dl-sources-note {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dl-source-list {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.dl-source {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background-color: var(--md-sys-color-surface-container-highest);
+    font-size: 0.85rem;
+    border: 1.5px solid transparent;
+}
+
+.dl-source.selected {
+    border-color: var(--md-sys-color-primary);
+}
+
+.dl-source-icon {
+    --md-icon-size: 18px;
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+}
+
+.dl-source-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    color: var(--md-sys-color-on-surface);
+}
+
+.dl-source-latency {
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.dl-source-latency.ok {
+    color: var(--md-filled-tonal-button-label-text-color);
+    background-color: var(--md-filled-tonal-button-container-color);
+}
+
+.dl-source-latency.bad {
+    color: var(--md-error-tonal-button-label-text-color);
+    background-color: var(--md-error-tonal-button-container-color);
+}
+
+.dl-source-latency.idle {
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+    background-color: var(--md-sys-color-surface-container);
+}
+
+.dl-source-remove {
+    border: none;
+    background: transparent;
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 3px 7px;
+    border-radius: 6px;
+}
+
+.dl-source-remove:hover {
+    color: var(--md-error-tonal-button-label-text-color);
+    background-color: var(--md-error-tonal-button-container-color);
+}
+
+.dl-source-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 0.8rem;
+}
+
+.dl-source-opt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--md-sys-color-on-surface-variant, var(--md-sys-color-on-surface));
+}
+
+.dl-source-opt input[type='number'] {
+    width: 58px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    font: inherit;
+}
+
+.dl-source-spacer {
+    flex: 1;
+}
+
+.dl-source-hint {
+    margin: 12px 0 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+#source-dialog [slot='content'] {
+    min-width: 420px;
+    max-width: 520px;
+    box-sizing: border-box;
+}

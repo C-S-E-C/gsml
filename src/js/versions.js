@@ -153,6 +153,114 @@ function renderRemoteList() {
     $('dl-remote-empty').hidden = items.length !== 0;
 }
 
+// ── 下载源：测速 / 排序 / 解码（列表可自定义，存 svar）─────────────────
+const SRC_KEY = 'download-sources';
+const SRC_INTERVAL_KEY = 'download-source-interval';
+const SRC_PAUSE_KEY = 'download-source-pause-when-running';
+const SRC_ACTIVE_KEY = 'download-source-active';
+
+let sources = [];             // 下载源列表（svar，可增删）
+let intervalMin = 5;          // 测速间隔（分钟）
+let pauseWhilePlaying = true; // 游戏运行中不测速
+let probeTimer = null;
+let probing = false;
+
+// 清单 type 字符串 → 后端枚举 u8（与 list_remote_versions 的输出一致）
+function typeU8(type) {
+    if (type === 'release') return 0;
+    if (type === 'snapshot') return 1;
+    if (type === 'old_alpha') return 2;
+    if (type === 'old_beta') return 3;
+    return 4;
+}
+
+// 下载源面板在 Settings → Download 里；这里只显示本次用了哪个源
+function setSourcesNote(text) {
+    const el = $('dl-source-hint');
+    if (el) {
+        el.textContent = text || '';
+    }
+}
+
+async function loadSourceSettings() {
+    try {
+        const [list, interval, pause] = await Promise.all([
+            invokeFn('get_svar', { key: SRC_KEY }).catch(() => null),
+            invokeFn('get_svar', { key: SRC_INTERVAL_KEY }).catch(() => null),
+            invokeFn('get_svar', { key: SRC_PAUSE_KEY }).catch(() => null),
+        ]);
+        if (Array.isArray(list) && list.length) {
+            sources = list.filter((s) => s && s.id && s.manifest_url);
+        }
+        if (!sources.length) {
+            sources = await invokeFn('default_download_sources').catch(() => []);
+        }
+        intervalMin = Number.isFinite(interval) && interval >= 1
+            ? Math.min(180, Math.round(interval))
+            : 5;
+        pauseWhilePlaying = pause !== false;
+    } catch (error) {
+        console.error('load download sources failed', error);
+    }
+}
+
+/**
+ * 刷新：后端并发测速 → 按延迟升序流式解码清单 → 最快的成功即返回，
+ * 其余还没 ping 完的直接丢弃。返回的 versions 直接喂给版本列表。
+ */
+async function refreshVersions() {
+    if (probing) {
+        return;
+    }
+    probing = true;
+    $('dl-loading').hidden = false;
+    $('dl-remote-empty').hidden = true;
+    try {
+        const res = await invokeFn('probe_download_sources', {
+            sources,
+            pauseWhileRunning: pauseWhilePlaying,
+        });
+        if (res.skipped) {
+            setSourcesNote('游戏运行中，本轮跳过测速');
+        } else if (res.error) {
+            setSourcesNote(res.error);
+        } else if (res.source_name) {
+            const ms = res.latency_ms != null ? ` · ${res.latency_ms} ms` : '';
+            setSourcesNote(`Source: ${res.source_name}${ms}`);
+        }
+        const versions = Array.isArray(res.versions) ? res.versions : [];
+        if (versions.length) {
+            remoteVersions = versions.map((v) => ({
+                name: String(v.id),
+                type: typeU8(v.type),
+            }));
+            renderRemoteList();
+            void invokeFn('set_svar', { key: SRC_ACTIVE_KEY, value: res.source_id ?? null })
+                .catch(() => {});
+        } else if (!res.skipped) {
+            // 所有源都解不出清单：回落到后端默认加载（走官方源），至少让列表可用
+            await loadRemote();
+        }
+    } catch (error) {
+        console.error('probe download sources failed', error);
+        setSourcesNote(String(error));
+        await loadRemote();
+    } finally {
+        probing = false;
+        $('dl-loading').hidden = true;
+    }
+}
+
+function scheduleProbe() {
+    if (probeTimer) {
+        clearInterval(probeTimer);
+    }
+    const ms = Math.max(1, intervalMin) * 60_000;
+    probeTimer = setInterval(() => {
+        void refreshVersions();
+    }, ms);
+}
+
 async function loadRemote() {
     $('dl-loading').hidden = false;
     $('dl-remote-empty').hidden = true;
@@ -442,6 +550,10 @@ function bindEvents() {
         invokeFn('cancel_install').catch((error) => console.error(error));
     });
 
+    // 下载源面板在 Settings → Download；本页按已保存的设置自动测速并刷新列表
+
+
+
     // 安装进度（全局事件，无论在哪个视图都同步到详情进度区）
     void onPageEvent('install-progress', (payload) => onProgress({ payload }));
 }
@@ -453,7 +565,9 @@ async function initVersionsPage() {
     lvIconImg = attachLeadingIcon(lvSelect);
     lvIconImg.hidden = true;
     bindEvents();
-    await Promise.all([loadRemote(), refreshInstalled()]);
+    await loadSourceSettings();
+    await Promise.all([refreshVersions(), refreshInstalled()]);
+    scheduleProbe();
     // 初始 displayText（vanilla）
     await setSelectValue(loaderSelect, '0');
 }

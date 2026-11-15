@@ -351,12 +351,13 @@ async fn download_with_progress(
 // ==================== 原版基底 ====================
 
 async fn find_vanilla_json_url(game_version: &str) -> Result<String, String> {
-    let manifest = fetch_json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await?;
+    let manifest = fetch_json(&crate::download_source::manifest_url()).await?;
     let arr = manifest["versions"].as_array().ok_or("官方清单格式异常")?;
     for v in arr {
         if v["id"].as_str() == Some(game_version) {
-            return v["url"].as_str().map(|s| s.to_string())
-                .ok_or_else(|| format!("版本 {game_version} 缺少下载地址"));
+            let url = v["url"].as_str()
+                .ok_or_else(|| format!("版本 {game_version} 缺少下载地址"))?;
+            return Ok(crate::download_source::rewrite(url));
         }
     }
     Err(format!("官方清单中不存在版本 {game_version}"))
@@ -421,10 +422,11 @@ async fn ensure_vanilla_base(app: &AppHandle, game_version: &str) -> Result<Valu
     let jar_path = vdir.join(format!("{game_version}.jar"));
     let client_url = json["downloads"]["client"]["url"].as_str()
         .ok_or("版本 JSON 缺少 client 下载地址")?;
+    let client_url = crate::download_source::rewrite(client_url);
     let client_size = json["downloads"]["client"]["size"].as_u64().unwrap_or(0);
     let cur = fs::metadata(&jar_path).map(|m| m.len()).unwrap_or(0);
     if cur != client_size {
-        download_with_progress(app, game_version, "client", client_url, &jar_path).await?;
+        download_with_progress(app, game_version, "client", &client_url, &jar_path).await?;
     }
     check_cancel()?;
 
@@ -460,7 +462,7 @@ async fn install_libraries(app: &AppHandle, pname: &str, libs: &[Value]) -> Resu
         if size > 0 && fs::metadata(&dest).map(|m| m.len()).unwrap_or(0) == size {
             continue;
         }
-        items.push((url.to_string(), dest, (size > 0).then_some(size)));
+        items.push((crate::download_source::rewrite(url), dest, (size > 0).then_some(size)));
     }
     download_all(app, items, pname, "libraries").await
 }
@@ -480,7 +482,7 @@ async fn extract_natives(app: &AppHandle, pname: &str, vdir: &Path, libs: &[Valu
             continue;
         };
         let name = url.rsplit('/').next().unwrap_or("natives.jar").to_string();
-        jars.push((url.to_string(), name));
+        jars.push((crate::download_source::rewrite(url), name));
     }
     if jars.is_empty() {
         return Ok(());
@@ -530,7 +532,7 @@ async fn install_assets(app: &AppHandle, game_version: &str, json: &Value) -> Re
         let text = fs::read_to_string(&idx_path).map_err(io_err)?;
         serde_json::from_str(&text).map_err(|e| format!("资源索引解析失败: {e}"))?
     } else {
-        let data = fetch_json(index_url).await?;
+        let data = fetch_json(&crate::download_source::rewrite(index_url)).await?;
         fs::create_dir_all(idx_path.parent().unwrap()).map_err(io_err)?;
         let pretty = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
         fs::write(&idx_path, pretty).map_err(io_err)?;
@@ -551,7 +553,7 @@ async fn install_assets(app: &AppHandle, game_version: &str, json: &Value) -> Re
             continue;
         }
         let url = format!("https://resources.download.minecraft.net/{h2}/{hash}");
-        items.push((url, dest, (size > 0).then_some(size)));
+        items.push((crate::download_source::rewrite(&url), dest, (size > 0).then_some(size)));
     }
     download_all(app, items, game_version, "assets").await
 }
@@ -614,7 +616,7 @@ async fn install_maven_libraries(app: &AppHandle, pname: &str, libs: &[Value]) -
                 if size > 0 && fs::metadata(&dest).map(|m| m.len()).unwrap_or(0) == size {
                     continue;
                 }
-                items.push((url.to_string(), dest, (size > 0).then_some(size)));
+                items.push((crate::download_source::rewrite(url), dest, (size > 0).then_some(size)));
                 continue;
             }
         }
@@ -633,7 +635,7 @@ async fn install_maven_libraries(app: &AppHandle, pname: &str, libs: &[Value]) -
         }
         let base = lib["url"].as_str().unwrap_or("https://libraries.minecraft.net/");
         let url = if base.ends_with('/') { format!("{base}{rel}") } else { format!("{base}/{rel}") };
-        items.push((url, dest, None));
+        items.push((crate::download_source::rewrite(&url), dest, None));
     }
     download_all(app, items, pname, "libraries").await
 }
@@ -886,7 +888,7 @@ pub async fn list_remote_versions(
 }
 
 async fn list_vanilla() -> Result<Vec<MinecraftVersion>, String> {
-    let manifest = fetch_json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await?;
+    let manifest = fetch_json(&crate::download_source::manifest_url()).await?;
     let arr = manifest["versions"].as_array().ok_or("官方清单格式异常")?;
     Ok(arr.iter().filter_map(|v| {
         let id = v["id"].as_str()?.to_string();

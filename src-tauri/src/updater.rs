@@ -81,32 +81,243 @@ fn version_at_least(current: &str, target: &str) -> bool {
     }
 }
 
-/// 把前端传来的自定义服务器地址归一成 releases 列表 API：
-///   · https://github.com/owner/repo → https://api.github.com/repos/owner/repo/releases
-///   · https://api.github.com/repos/owner/repo（可带 /releases）→ 原样
-///   · 其他（镜像站等）→ {base}/releases，按同样的 JSON 结构解析
-fn normalize_releases_url(base: Option<&str>) -> String {
-    let base = base.unwrap_or("").trim().trim_end_matches('/');
-    if base.is_empty() {
-        return DEFAULT_API_BASE.to_string();
-    }
-    let lower = base.to_ascii_lowercase();
-    if lower.contains("github.com") && !lower.contains("api.github.com") {
-        let slug = base
-            .split_once("github.com/")
-            .map(|(_, rest)| rest.trim_end_matches("/releases").to_string())
-            .unwrap_or_default();
-        if !slug.is_empty() {
-            return format!("https://api.github.com/repos/{slug}/releases");
+/// 把配置的源展开成候选 URL 列表（可多行 / 逗号分隔）。
+/// URL 一律**原样使用**，不再做 github.com → api.github.com 之类的改写：
+/// UpdateSource.url 里直接填完整的 releases 接口，例如
+///   https://api.github.com/repos/owner/repo/releases
+/// 只有 `append_per_page` 打开且地址里没有 `?` 时才追加 ?per_page=20。
+fn api_candidates(server_base: Option<&str>, append_per_page: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(raw) = server_base {
+        for part in raw
+            .split(|c: char| c == '\n' || c == '\r' || c == ',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            let url = part.trim_end_matches('/').to_string();
+            let api = if url.contains('?') || !append_per_page {
+                url
+            } else {
+                format!("{url}?per_page=20")
+            };
+            if !out.contains(&api) {
+                out.push(api);
+            }
         }
     }
-    if lower.contains("api.github.com/repos") {
-        return base
-            .trim_end_matches("/releases")
-            .trim_end_matches("/latest")
-            .to_string();
+    if out.is_empty() {
+        let url = DEFAULT_API_BASE.trim_end_matches('/').to_string();
+        out.push(if append_per_page {
+            format!("{url}?per_page=20")
+        } else {
+            url
+        });
     }
-    format!("{base}/releases")
+    out
+}
+
+/// 请求一个源的 release 列表（带超时），返回 (api, JSON)。
+async fn fetch_releases(api: &str) -> Result<(String, serde_json::Value), String> {
+    let resp = tokio::time::timeout(
+        std::time::Duration::from_secs(12),
+        http_client()
+            .get(api)
+            .header("User-Agent", "gsml-updater")
+            .header("Accept", "application/vnd.github+json")
+            .send(),
+    )
+    .await
+    .map_err(|_| format!("{api} 请求超时"))?
+    .map_err(|e| format!("{api} 请求失败：{e}"))?
+    .error_for_status()
+    .map_err(|e| format!("{api} 请求失败：{e}"))?;
+    let body = tokio::time::timeout(std::time::Duration::from_secs(12), resp.text())
+        .await
+        .map_err(|_| format!("{api} 读取超时"))?
+        .map_err(|e| format!("{api} 读取失败：{e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("{api} 解析失败：{e}"))?;
+    Ok((api.to_string(), value))
+}
+
+/// 竞速多个更新源：所有源同时开始，第一个「响应且解析成功」的胜出，
+/// 其余还没完成的直接丢弃（接收端关闭后任务自行结束）。
+async fn race_releases(candidates: Vec<String>) -> Result<serde_json::Value, String> {
+    let (tx, mut rx) =
+        tokio::sync::mpsc::channel::<Result<serde_json::Value, String>>(candidates.len().max(1));
+    for api in candidates {
+        let tx = tx.clone();
+        tauri::async_runtime::spawn(async move {
+            let res = fetch_releases(&api).await.map(|(_, value)| value);
+            let _ = tx.send(res).await;
+        });
+    }
+    drop(tx);
+    let mut errors: Vec<String> = Vec::new();
+    while let Some(res) = rx.recv().await {
+        match res {
+            Ok(value) => return Ok(value),
+            Err(e) => errors.push(e),
+        }
+    }
+    Err(format!("所有更新源都不可用：{}", errors.join("；")))
+}
+
+/// 一个更新源（仓库地址或 releases API 均可，内部统一归一化）。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UpdateSource {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    /// 是否在请求地址后追加 `?per_page=20`。GitHub 官方 API 建议加（只取最近 20 条）；
+    /// 自建/镜像接口若已有自己的查询串或不支持该参数，可关掉。
+    #[serde(default = "default_append_per_page")]
+    pub append_per_page: bool,
+}
+
+fn default_append_per_page() -> bool {
+    true
+}
+
+pub fn default_update_sources() -> Vec<UpdateSource> {
+    vec![
+        UpdateSource {
+            id: "github".to_string(),
+            name: "GitHub".to_string(),
+            url: DEFAULT_API_BASE.to_string(),
+            append_per_page: true,
+        },
+        UpdateSource {
+            id: "cloudflare".to_string(),
+            name: "Cloudflare".to_string(),
+            url: "https://packages.r2.syntropica.top/top/syntropica/apps/gsml/releases.json".to_string(),
+            append_per_page: false,
+        },
+    ]
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UpdateProbeEntry {
+    pub id: String,
+    pub name: String,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+    pub chosen: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UpdateProbeResult {
+    pub source_id: Option<String>,
+    pub source_name: Option<String>,
+    pub latency_ms: Option<u64>,
+    pub entries: Vec<UpdateProbeEntry>,
+    pub error: Option<String>,
+}
+
+struct ApiOutcome {
+    src: UpdateSource,
+    latency: Option<u64>,
+    error: Option<String>,
+    value: Option<serde_json::Value>,
+}
+
+fn update_entries(outcomes: &[ApiOutcome], chosen: Option<&str>) -> Vec<UpdateProbeEntry> {
+    let mut entries: Vec<UpdateProbeEntry> = outcomes
+        .iter()
+        .map(|o| UpdateProbeEntry {
+            id: o.src.id.clone(),
+            name: o.src.name.clone(),
+            latency_ms: o.latency,
+            error: o.error.clone(),
+            chosen: chosen.is_some_and(|c| c == o.src.id),
+        })
+        .collect();
+    entries.sort_by_key(|e| (e.latency_ms.is_none(), e.latency_ms.unwrap_or(u64::MAX)));
+    entries
+}
+
+/// 同时给所有更新源测速并解析 release 列表：先响应且解析成功的胜出，
+/// 其余任务在接收端关闭后自行作废。
+#[tauri::command]
+pub async fn probe_update_sources(sources: Vec<UpdateSource>) -> Result<UpdateProbeResult, String> {
+    if sources.is_empty() {
+        return Err("更新源列表为空".to_string());
+    }
+    let (tx, mut rx) =
+        tokio::sync::mpsc::channel::<ApiOutcome>(sources.len().max(1));
+    for src in sources {
+        let tx = tx.clone();
+        tauri::async_runtime::spawn(async move {
+            // 地址原样使用：UpdateSource.url 就是完整的 releases 接口
+            let base = src.url.trim().trim_end_matches('/');
+            let api = if base.contains('?') || !src.append_per_page {
+                base.to_string()
+            } else {
+                format!("{base}?per_page=20")
+            };
+            let started = std::time::Instant::now();
+            let fetched = fetch_releases(&api).await;
+            let elapsed = started.elapsed().as_millis() as u64;
+            let mut outcome = ApiOutcome {
+                src,
+                latency: None,
+                error: None,
+                value: None,
+            };
+            match fetched {
+                Ok((_, value)) => {
+                    outcome.latency = Some(elapsed);
+                    outcome.value = Some(value);
+                }
+                Err(e) => outcome.error = Some(e),
+            }
+            let _ = tx.send(outcome).await;
+        });
+    }
+    drop(tx);
+
+    let mut outcomes: Vec<ApiOutcome> = Vec::new();
+    while let Some(outcome) = rx.recv().await {
+        if outcome.value.is_some() {
+            let mut res = UpdateProbeResult {
+                source_id: Some(outcome.src.id.clone()),
+                source_name: Some(outcome.src.name.clone()),
+                latency_ms: outcome.latency,
+                entries: Vec::new(),
+                error: None,
+            };
+            outcomes.push(ApiOutcome { value: None, ..outcome });
+            res.entries = update_entries(&outcomes, res.source_id.as_deref());
+            return Ok(res);
+        }
+        outcomes.push(outcome);
+    }
+
+    let entries = update_entries(&outcomes, None);
+    let detail = entries
+        .iter()
+        .map(|e| {
+            format!(
+                "{}（{}）",
+                e.name,
+                e.error.clone().unwrap_or_else(|| "无响应".to_string())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("；");
+    Ok(UpdateProbeResult {
+        source_id: None,
+        source_name: None,
+        latency_ms: None,
+        entries,
+        error: Some(format!("所有更新源都不可用：{detail}")),
+    })
+}
+
+/// 前端首次使用时读取内置默认更新源。
+#[tauri::command]
+pub fn default_update_sources_cmd() -> Vec<UpdateSource> {
+    default_update_sources()
 }
 
 /// 按当前平台从 assets 里挑目标文件，返回 (url, name, size, mode)
@@ -154,6 +365,7 @@ fn pick_asset(assets: &[serde_json::Value]) -> Result<(String, String, u64, Inst
 pub async fn check_update(
     app: AppHandle,
     server_base: Option<String>,
+    append_per_page: Option<bool>,
 ) -> Result<UpdateCheck, String> {
     // 渠道判定：debug_assertions 覆盖 `tauri build --debug`（is_dev 只对
     // `tauri dev` 为 true）；debug/开发构建跟随 prerelease，正式构建只看稳定版
@@ -161,21 +373,12 @@ pub async fn check_update(
         cfg!(debug_assertions) || tauri::is_dev();
     let current_version = app.package_info().version.to_string();
 
-    let url = normalize_releases_url(server_base.as_deref());
-    let api = if url.contains('?') { url.clone() } else { format!("{url}?per_page=20") };
-
-    let releases = http_client()
-        .get(&api)
-        .header("User-Agent", "gsml-updater")
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|e| format!("请求 release 列表失败：{e}"))?
-        .error_for_status()
-        .map_err(|e| format!("请求 release 列表失败：{e}"))?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("解析 release 列表失败：{e}"))?;
+    // 多个更新源同时竞速：谁先响应且解析成功就用谁（其余丢弃）。
+    let releases = race_releases(api_candidates(
+        server_base.as_deref(),
+        append_per_page.unwrap_or(true),
+    ))
+    .await?;
 
     let list = releases.as_array().ok_or("release 列表格式异常")?;
     let release = list

@@ -51,8 +51,8 @@ async function copy(text) {
 // 偏好持久化走后端 simpleValues（get_svar/set_svar）；更新管线在 updater.js。
 const SVAR = {
     enabled: 'auto-update-enabled',
-    server: 'auto-update-server',
-    customUrl: 'custom-update-server-url',
+    // 更新源本身改成列表（update-sources / update-source-active），
+    // 旧的单源键 auto-update-server / custom-update-server-url 已弃用
 };
 
 async function loadSvar(key, fallback) {
@@ -97,11 +97,12 @@ function showUpdateConfirmDialog(text) {
 
 async function runCheck() {
     const button = document.getElementById('check-update-button');
-    const customUrl = document.getElementById('custom-update-server-url')?.value?.trim() || null;
+    const source = activeUpdateSource();
+    const customUrl = source?.url || null;
     try {
         button.disabled = true;
         updateStatus('正在检查更新…');
-        const info = await checkForUpdates(customUrl);
+        const info = await checkForUpdates(customUrl, source?.append_per_page !== false);
         if (info.up_to_date) {
             updateStatus(`已是最新版本 ${info.latest_version}`);
             return;
@@ -137,27 +138,18 @@ async function runCheck() {
 
 async function initUpdateSettings() {
     const toggle = document.getElementById('auto-update-toggle');
-    const select = document.getElementById('auto-update-fetch-server');
-    const customLine = document.getElementById('custom-update-server-line');
-    const customUrl = document.getElementById('custom-update-server-url');
     const button = document.getElementById('check-update-button');
     const versionEl = document.getElementById('update-current-version');
-    if (!toggle || !select) return;
+    if (!toggle) return;
 
     // 恢复持久化偏好
     toggle.selected = (await loadSvar(SVAR.enabled, true)) !== false;
-    select.value = (await loadSvar(SVAR.server, 'github')) || 'github';
-    customUrl.value = await loadSvar(SVAR.customUrl, '') || '';
-    customLine.style.display = select.value === 'custom' ? '' : 'none';
     if (versionEl) versionEl.textContent = await tauriapp.getVersion();
 
     toggle.addEventListener('change', () => saveSvar(SVAR.enabled, toggle.selected));
-    select.addEventListener('change', () => {
-        customLine.style.display = select.value === 'custom' ? '' : 'none';
-        saveSvar(SVAR.server, select.value);
-    });
-    customUrl.addEventListener('change', () => saveSvar(SVAR.customUrl, customUrl.value.trim()));
-    button.addEventListener('click', runCheck);
+    if (button) button.addEventListener('click', runCheck);
+    // 更新源列表（与下载源同款面板）：加载 + 竞速测一次
+    await initUpdateSourcePanel();
     // 后台进度（auto-update 轮询等场景未来复用）
     onUpdateProgress(() => {});
 }
@@ -285,6 +277,361 @@ async function initJavaSettings() {
     });
 }
 
+// ── Download sources（多源同时测速竞速 / 可自定义）─────────────────────
+const SRC_KEY = 'download-sources';
+const SRC_INTERVAL_KEY = 'download-source-interval';
+const SRC_PAUSE_KEY = 'download-source-pause-when-running';
+const SRC_ACTIVE_KEY = 'download-source-active';
+
+const $el = (id) => document.getElementById(id);
+
+let sources = [];
+let intervalMin = 5;
+let pauseWhilePlaying = true;
+let sourceEntries = [];
+let chosenSourceId = null;
+let testingSources = false;
+
+function setSourceNote(text) {
+    const el = $el('dl-sources-note');
+    if (el) {
+        el.textContent = text || '';
+    }
+}
+
+function renderSources() {
+    const list = $el('dl-source-list');
+    if (!list) {
+        return;
+    }
+    list.innerHTML = sources.map((src) => {
+        const entry = sourceEntries.find((e) => e.id === src.id);
+        let latency = '待测';
+        let cls = 'idle';
+        if (src.enabled === false) {
+            latency = '已禁用';
+        } else if (entry) {
+            if (entry.latency_ms != null) {
+                latency = `${entry.latency_ms} ms`;
+                cls = 'ok';
+            } else {
+                latency = entry.error ? '不可用' : '待测';
+                cls = 'bad';
+            }
+        }
+        const chosen = chosenSourceId === src.id ? ' selected' : '';
+        return `
+            <li class="dl-source${chosen}" data-id="${escapeHtml(src.id)}"
+                title="${escapeHtml(src.manifest_url)}">
+                <md-icon class="dl-source-icon">dns</md-icon>
+                <span class="dl-source-name">${escapeHtml(src.name)}</span>
+                <span class="dl-source-latency ${cls}">${escapeHtml(latency)}</span>
+                <button class="dl-source-remove" data-id="${escapeHtml(src.id)}"
+                    aria-label="Remove source" title="Remove source">×</button>
+            </li>`;
+    }).join('');
+}
+
+async function saveSources() {
+    try {
+        await invokeFn('set_svar', { key: SRC_KEY, value: sources });
+    } catch (error) {
+        console.error('save download sources failed', error);
+    }
+}
+
+async function loadSourceSettings() {
+    try {
+        const [list, interval, pause] = await Promise.all([
+            loadSvar(SRC_KEY, null),
+            loadSvar(SRC_INTERVAL_KEY, null),
+            loadSvar(SRC_PAUSE_KEY, null),
+        ]);
+        sources = Array.isArray(list) && list.length
+            ? list.filter((s) => s && s.id && s.manifest_url)
+            : [];
+        if (!sources.length) {
+            sources = await invokeFn('default_download_sources').catch(() => []);
+        }
+        intervalMin = Number.isFinite(interval) && interval >= 1
+            ? Math.min(180, Math.round(interval))
+            : 5;
+        pauseWhilePlaying = pause !== false;
+    } catch (error) {
+        console.error('load download sources failed', error);
+    }
+    if ($el('dl-source-interval')) {
+        $el('dl-source-interval').value = String(intervalMin);
+    }
+    if ($el('dl-source-pause')) {
+        $el('dl-source-pause').checked = pauseWhilePlaying;
+    }
+    renderSources();
+}
+
+/**
+ * 同时给所有源测速并解析清单：谁先响应且解析成功就用谁，其余丢弃。
+ * 结果里带每个源的延迟，胜出的那个会被标记并写进 active svar。
+ */
+async function testSources() {
+    if (testingSources) {
+        return;
+    }
+    testingSources = true;
+    setSourceNote('正在同时测速…');
+    try {
+        const res = await invokeFn('probe_download_sources', {
+            sources,
+            pauseWhileRunning: pauseWhilePlaying,
+        });
+        sourceEntries = res.entries || [];
+        chosenSourceId = res.source_id ?? null;
+        renderSources();
+        if (res.skipped) {
+            setSourceNote('游戏运行中，本轮跳过测速');
+        } else if (res.error) {
+            setSourceNote(res.error);
+        } else if (res.source_name) {
+            const ms = res.latency_ms != null ? ` · ${res.latency_ms} ms` : '';
+            setSourceNote(`最快：${res.source_name}${ms}`);
+            void invokeFn('set_svar', { key: SRC_ACTIVE_KEY, value: res.source_id ?? null })
+                .catch(() => {});
+        } else {
+            setSourceNote('');
+        }
+    } catch (error) {
+        console.error('probe download sources failed', error);
+        setSourceNote(String(error));
+    } finally {
+        testingSources = false;
+    }
+}
+
+function bindSourcePanel() {
+    if (!$el('dl-source-list')) {
+        return;
+    }
+    $el('dl-source-refresh')?.addEventListener('click', () => {
+        void testSources();
+    });
+    $el('dl-source-interval')?.addEventListener('change', async (e) => {
+        const n = Math.min(180, Math.max(1, Number.parseInt(e.target.value, 10) || 5));
+        intervalMin = n;
+        e.target.value = String(n);
+        await invokeFn('set_svar', { key: SRC_INTERVAL_KEY, value: n }).catch(() => {});
+    });
+    $el('dl-source-pause')?.addEventListener('change', async (e) => {
+        pauseWhilePlaying = e.target.checked;
+        await invokeFn('set_svar', { key: SRC_PAUSE_KEY, value: pauseWhilePlaying })
+            .catch(() => {});
+    });
+    $el('dl-source-list')?.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.dl-source-remove');
+        if (!btn) {
+            return;
+        }
+        if (sources.length <= 1) {
+            setSourceNote('至少保留一个下载源');
+            return;
+        }
+        sources = sources.filter((s) => s.id !== btn.dataset.id);
+        renderSources();
+        await saveSources();
+        void testSources();
+    });
+    $el('dl-source-add')?.addEventListener('click', () => {
+        $el('source-name').value = '';
+        $el('source-url').value = '';
+        void $el('source-dialog').show();
+    });
+    $el('source-cancel')?.addEventListener('click', () => {
+        void $el('source-dialog').close();
+    });
+    $el('source-save')?.addEventListener('click', async () => {
+        const name = $el('source-name').value.trim();
+        const url = $el('source-url').value.trim();
+        if (!name || !/^https?:\/\//i.test(url)) {
+            setSourceNote('请填写名称与 http(s) 清单地址');
+            return;
+        }
+        sources = [...sources, {
+            id: `custom-${Date.now()}`,
+            name,
+            manifest_url: url,
+            ping_url: '',
+            rewrites: [],
+            enabled: true,
+        }];
+        await saveSources();
+        renderSources();
+        void $el('source-dialog').close();
+        void testSources();
+    });
+}
+
+// ── Update sources（与下载源同款列表：多源同时竞速）─────────────────────
+const UPDATE_SRC_KEY = 'update-sources';
+const UPDATE_SRC_ACTIVE_KEY = 'update-source-active';
+
+let updateSources = [];
+let updateEntries = [];
+let updateChosenId = null;
+let testingUpdates = false;
+
+function updateNote(text) {
+    const el = $el('update-sources-note');
+    if (el) {
+        el.textContent = text || '';
+    }
+}
+
+/** 当前选中的更新源（没测过就退回列表第一个）。 */
+function activeUpdateSource() {
+    return updateSources.find((s) => s.id === updateChosenId) || updateSources[0] || null;
+}
+
+function renderUpdateSources() {
+    const list = $el('update-source-list');
+    if (!list) {
+        return;
+    }
+    list.innerHTML = updateSources.map((src) => {
+        const entry = updateEntries.find((e) => e.id === src.id);
+        let latency = '待测';
+        let cls = 'idle';
+        if (entry) {
+            if (entry.latency_ms != null) {
+                latency = `${entry.latency_ms} ms`;
+                cls = 'ok';
+            } else {
+                latency = entry.error ? '不可用' : '待测';
+                cls = 'bad';
+            }
+        }
+        const chosen = updateChosenId === src.id ? ' selected' : '';
+        const perPage = src.append_per_page === false ? '（不追加 ?per_page=20）' : '';
+        return `
+            <li class="dl-source${chosen}" data-id="${escapeHtml(src.id)}"
+                title="${escapeHtml(src.url)}${perPage}">
+                <md-icon class="dl-source-icon">system_update</md-icon>
+                <span class="dl-source-name">${escapeHtml(src.name)}</span>
+                <span class="dl-source-latency ${cls}">${escapeHtml(latency)}</span>
+                <button class="dl-source-remove" data-id="${escapeHtml(src.id)}"
+                    aria-label="Remove source" title="Remove source">×</button>
+            </li>`;
+    }).join('');
+}
+
+async function saveUpdateSources() {
+    try {
+        await invokeFn('set_svar', { key: UPDATE_SRC_KEY, value: updateSources });
+    } catch (error) {
+        console.error('save update sources failed', error);
+    }
+}
+
+async function loadUpdateSources() {
+    try {
+        const list = await loadSvar(UPDATE_SRC_KEY, null);
+        updateSources = Array.isArray(list) && list.length
+            ? list.filter((s) => s && s.id && s.url)
+            : [];
+        if (!updateSources.length) {
+            updateSources = await invokeFn('default_update_sources_cmd').catch(() => []);
+        }
+        updateChosenId = (await loadSvar(UPDATE_SRC_ACTIVE_KEY, null)) || null;
+    } catch (error) {
+        console.error('load update sources failed', error);
+    }
+    renderUpdateSources();
+}
+
+/** 同时给所有更新源测速并解析 release 列表，先成功者胜出。 */
+async function testUpdateSources() {
+    if (testingUpdates) {
+        return;
+    }
+    testingUpdates = true;
+    updateNote('正在同时测速…');
+    try {
+        const res = await invokeFn('probe_update_sources', { sources: updateSources });
+        updateEntries = res.entries || [];
+        updateChosenId = res.source_id ?? updateChosenId;
+        renderUpdateSources();
+        if (res.error) {
+            updateNote(res.error);
+        } else if (res.source_name) {
+            const ms = res.latency_ms != null ? ` · ${res.latency_ms} ms` : '';
+            updateNote(`最快：${res.source_name}${ms}`);
+            void saveSvar(UPDATE_SRC_ACTIVE_KEY, res.source_id ?? null);
+        } else {
+            updateNote('');
+        }
+    } catch (error) {
+        console.error('probe update sources failed', error);
+        updateNote(String(error));
+    } finally {
+        testingUpdates = false;
+    }
+}
+
+async function initUpdateSourcePanel() {
+    if (!$el('update-source-list')) {
+        return;
+    }
+    await loadUpdateSources();
+    $el('update-source-refresh')?.addEventListener('click', () => {
+        void testUpdateSources();
+    });
+    $el('update-source-list')?.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.dl-source-remove');
+        if (!btn) {
+            return;
+        }
+        if (updateSources.length <= 1) {
+            updateNote('至少保留一个更新源');
+            return;
+        }
+        updateSources = updateSources.filter((s) => s.id !== btn.dataset.id);
+        renderUpdateSources();
+        await saveUpdateSources();
+        void testUpdateSources();
+    });
+    $el('update-source-add')?.addEventListener('click', () => {
+        $el('update-source-name').value = '';
+        $el('update-source-url').value = '';
+        if ($el('update-source-perpage')) {
+            $el('update-source-perpage').checked = true;
+        }
+        void $el('update-source-dialog').show();
+    });
+    $el('update-source-cancel')?.addEventListener('click', () => {
+        void $el('update-source-dialog').close();
+    });
+    $el('update-source-save')?.addEventListener('click', async () => {
+        const name = $el('update-source-name').value.trim();
+        const url = $el('update-source-url').value.trim();
+        if (!name || !/^https?:\/\//i.test(url)) {
+            updateNote('请填写名称与 http(s) 地址');
+            return;
+        }
+        const appendPerPage = $el('update-source-perpage')
+            ? $el('update-source-perpage').checked
+            : true;
+        updateSources = [...updateSources, {
+            id: `custom-${Date.now()}`,
+            name,
+            url,
+            append_per_page: appendPerPage,
+        }];
+        await saveUpdateSources();
+        renderUpdateSources();
+        void $el('update-source-dialog').close();
+        void testUpdateSources();
+    });
+    void testUpdateSources();
+}
+
 async function initSettingsPage() {
     // Default to the first (only) view: "about".
     const first = VIEWS.length > 0 ? VIEWS[0].key : 'about';
@@ -298,6 +645,11 @@ async function initSettingsPage() {
         await copy((await getDeviceIdentifier()).replaceAll(" ", ""));
     });
     document.getElementById("device-identifier-art").innerText = drunkenBishop(await getDeviceIdentifier(), 17,33);
+
+    // 下载源面板（Settings → Download）：加载配置并测一次速选出最快源
+    bindSourcePanel();
+    await loadSourceSettings();
+    void testSources();
 }
 
 /**

@@ -11,9 +11,31 @@ import { invokeFn, onPageEvent, isRootPage } from './main.js';
 // 逻辑依赖）。简单值都存后端 simpleValues（get_svar/set_svar）。
 const PREF = {
     enabled: 'auto-update-enabled',
-    server: 'auto-update-server',
-    customUrl: 'custom-update-server-url',
 };
+
+/**
+ * 取当前选中的更新源（设置页测速竞速选出的那个；没选过就取列表第一个）。
+ * 源列表存 svar `update-sources`，选中项存 `update-source-active`。
+ * @returns {Promise<{url: string|null, appendPerPage: boolean}>}
+ */
+async function activeUpdateSource() {
+    try {
+        const [list, activeId] = await Promise.all([
+            invokeFn('get_svar', { key: 'update-sources' }),
+            invokeFn('get_svar', { key: 'update-source-active' }),
+        ]);
+        if (Array.isArray(list) && list.length) {
+            const pick = list.find((s) => s && s.id === activeId) || list[0];
+            return {
+                url: pick?.url || null,
+                appendPerPage: pick?.append_per_page !== false,
+            };
+        }
+    } catch (error) {
+        console.error('load update sources failed:', error);
+    }
+    return { url: null, appendPerPage: true };
+}
 
 // 最近一次 check_update 的结果，供 apply 前复用 asset 信息
 let lastCheck = null;
@@ -21,10 +43,14 @@ let lastCheck = null;
 /**
  * 检查更新。
  * @param {string|null} serverBase 自定义 release 源（空/null → 官方仓库）
+ * @param {boolean} appendPerPage 是否在地址后追加 ?per_page=20
  * @returns {Promise<object>} UpdateCheck（含 up_to_date / asset_url / mode）
  */
-export async function checkForUpdates(serverBase = null) {
-    lastCheck = await invokeFn('check_update', { serverBase: serverBase || null });
+export async function checkForUpdates(serverBase = null, appendPerPage = true) {
+    lastCheck = await invokeFn('check_update', {
+        serverBase: serverBase || null,
+        appendPerPage,
+    });
     return lastCheck;
 }
 
@@ -128,9 +154,9 @@ export async function initAutoUpdate() {
         await new Promise((r) => setTimeout(r, 3000));
         if ((await pref(PREF.enabled, true)) === false) return;
 
-        const server = (await pref(PREF.server, 'github')) || 'github';
-        const serverBase = server === 'custom' ? await pref(PREF.customUrl, '') : '';
-        const info = await checkForUpdates(serverBase || null);
+        // 更新源改成可配置列表：优先用设置页测速选中的那个
+        const source = await activeUpdateSource();
+        const info = await checkForUpdates(source.url, source.appendPerPage);
         if (info.up_to_date) return;
 
         showUpdateToast({

@@ -53,23 +53,53 @@
           <h2 class="setting-title">Download Settings</h2>
           <p class="setting-subtitle">Manage your download and update preferences.</p>
           <div class="setting-divider"></div>
+          <div class="setting-section-label">Update Sources</div>
+          <p class="setting-note">
+            多个更新源会同时请求，谁先响应且解析成功就用谁，其余丢弃。
+          </p>
+          <ul class="dl-source-list" id="update-source-list"></ul>
+          <div class="dl-source-controls">
+            <span class="dl-source-spacer"></span>
+            <md-text-button id="update-source-refresh">
+              <md-icon slot="icon">refresh</md-icon>Test all
+            </md-text-button>
+            <md-text-button id="update-source-add">
+              <md-icon slot="icon">add</md-icon>Add source
+            </md-text-button>
+          </div>
+          <p class="setting-note" id="update-sources-note"></p>
+          <div class="setting-divider"></div>
+
+          <div class="setting-section-label">Download Sources</div>
+          <p class="setting-note">
+            多个源会同时开始测速并解析版本清单，谁先响应且解析成功就用谁，其余自动丢弃。
+            游戏运行期间可暂停测速。
+          </p>
+          <ul class="dl-source-list" id="dl-source-list"></ul>
+          <div class="dl-source-controls">
+            <label class="dl-source-opt">Refresh every
+              <input type="number" id="dl-source-interval" min="1" max="180" step="1" value="5" />
+              min
+            </label>
+            <label class="dl-source-opt">
+              <input type="checkbox" id="dl-source-pause" checked />
+              Pause while Minecraft is running
+            </label>
+            <span class="dl-source-spacer"></span>
+            <md-text-button id="dl-source-refresh">
+              <md-icon slot="icon">refresh</md-icon>Test all
+            </md-text-button>
+            <md-text-button id="dl-source-add">
+              <md-icon slot="icon">add</md-icon>Add source
+            </md-text-button>
+          </div>
+          <p class="setting-note" id="dl-sources-note"></p>
+          <div class="setting-divider"></div>
+
           <div class="setting-line">
             <label for="auto-update-toggle">Enable Update Check</label>
             <md-switch id="auto-update-toggle" selected></md-switch>
           </div>
-          <div class="setting-line">
-            <label for="auto-update-fetch-server">Update Server</label>
-            <md-filled-select id="auto-update-fetch-server">
-              <md-select-option value="github" selected>Github</md-select-option>
-              <md-select-option value="github">Cloudflare</md-select-option>
-              <md-select-option value="custom">Custom</md-select-option>
-            </md-filled-select>
-          </div>
-          <div class="setting-line" style="display: none;" id="custom-update-server-line">
-            <label for="custom-update-server-url">Custom Update Server URL</label>
-            <md-outlined-text-field id="custom-update-server-url" placeholder="https://api.github.com/repos/owner/repo"></md-outlined-text-field>
-          </div>
-          <div class="setting-divider"></div>
           <div class="setting-line">
             <label for="check-update-button">Current: <span id="update-current-version"></span></label>
             <md-filled-button id="check-update-button">Check for Updates</md-filled-button>
@@ -110,6 +140,50 @@
       <div slot="actions">
         <md-text-button form="update-confirm-form" value="later">Not Now</md-text-button>
         <md-filled-button form="update-confirm-form" value="update">Update Now</md-filled-button>
+      </div>
+    </md-dialog>
+
+    <!-- ── Add update source（自定义更新源）── -->
+    <md-dialog type="modal" id="update-source-dialog">
+      <div slot="headline">Add update source</div>
+      <div slot="content">
+        <md-outlined-text-field id="update-source-name" label="Name"
+          placeholder="e.g. My mirror" style="width:100%;"></md-outlined-text-field>
+        <md-outlined-text-field id="update-source-url" label="Releases API URL"
+          placeholder="https://api.github.com/repos/owner/repo/releases"
+          style="width:100%;margin-top:12px;"></md-outlined-text-field>
+        <p class="setting-note">
+          请直接填**完整的 releases 接口地址**（原样请求，不会自动补 /releases，
+          也不会改写域名）；返回体需为 release 数组。
+        </p>
+        <label class="dl-source-opt" style="margin-top:12px;">
+          <input type="checkbox" id="update-source-perpage" checked />
+          Append <code>?per_page=20</code> to the URL
+        </label>
+      </div>
+      <div slot="actions">
+        <md-filled-tonal-button id="update-source-cancel">Cancel</md-filled-tonal-button>
+        <md-filled-button id="update-source-save">Add</md-filled-button>
+      </div>
+    </md-dialog>
+
+    <!-- ── Add download source（自定义下载源）── -->
+    <md-dialog type="modal" id="source-dialog">
+      <div slot="headline">Add download source</div>
+      <div slot="content">
+        <md-outlined-text-field id="source-name" label="Name"
+          placeholder="e.g. My mirror" style="width:100%;"></md-outlined-text-field>
+        <md-outlined-text-field id="source-url" label="version_manifest_v2.json URL"
+          placeholder="https://…/mc/game/version_manifest_v2.json"
+          style="width:100%;margin-top:12px;"></md-outlined-text-field>
+        <p class="setting-note">
+          清单里的下载地址会照原样使用；如需把 Mojang 官方域名改写到镜像，
+          请在 svar 的 download-sources 里为该源配置 rewrites。
+        </p>
+      </div>
+      <div slot="actions">
+        <md-filled-tonal-button id="source-cancel">Cancel</md-filled-tonal-button>
+        <md-filled-button id="source-save">Add</md-filled-button>
       </div>
     </md-dialog>
 
