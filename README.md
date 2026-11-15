@@ -34,8 +34,7 @@ launches from any link — a website, a Discord message, or your own tooling.
 ```
 glow-squid://install-version?version=1.20.1&loader=forge&loaderVersion=47.4.0&name=MyInstance
 ```
-Example: 
-[Install 1.20.1 with Forge 47.4.0 Named "MyInstance"](glow-squid://install-version?version=1.20.1&loader=forge&loaderVersion=47.4.0&name=MyInstance)
+
 | Parameter | Required | Description |
 | --- | :---: | --- |
 | `version` | ✅ | Minecraft version, e.g. `1.20.1` |
@@ -48,8 +47,7 @@ Example:
 ```
 glow-squid://start-game?version=1.21.1&server=simpcraft.com
 ```
-Example: 
-[Launch 1.21.1 on simpcraft.com](glow-squid://start-game?version=1.21.1&server=simpcraft.com)
+
 | Parameter | Required | Description |
 | --- | :---: | --- |
 | `version` | — | Minecraft version to launch |
