@@ -3,7 +3,7 @@
 // list on the left) and the content pane on the right. Only the "About"
 // view exists for now; more views can be added to the list / #view-* panels.
 
-import { isPage,invokeFn,tauriapp,getDeviceIdentifier,escapeHtml } from './main.js';
+import { isPage,invokeFn,tauriapp,getDeviceIdentifier,escapeHtml,onPageEvent } from './main.js';
 import { checkForUpdates, downloadUpdate, applyDownloaded, onUpdateProgress } from './updater.js';
 
 const VIEWS = [
@@ -637,6 +637,226 @@ async function initUpdateSourcePanel() {
     void testUpdateSources();
 }
 
+// ── Java 自动安装（Download 设置 + Java 面板一键安装）────────────────
+const JAVA_CFG = {
+    auto: 'java-auto-install',
+    prefer: 'java-prefer',
+    mirrors: 'java-mirrors',
+};
+
+/** 读配置并同步到后端（install_version 内部会读这份配置）。 */
+let javaMirrors = [];      // [{ id, name, url }]
+let javaMirrorProbes = []; // [{ url, latency_ms, adoptium, error }]
+
+function renderJavaMirrors() {
+    const list = $el('java-mirror-list');
+    if (!list) return;
+    if (!javaMirrors.length) {
+        list.innerHTML = '<li class="dl-source"><span class="dl-source-name">No mirrors — using the built-in list</span></li>';
+        return;
+    }
+    // 按测得的延迟排序展示（最快在上；不可用/未测的排后面），不改变保存顺序
+    const latencyOf = (mirror) => {
+        const p = javaMirrorProbes.find((x) => x.url === mirror.url);
+        return p && p.latency_ms != null ? p.latency_ms : Number.MAX_SAFE_INTEGER;
+    };
+    const ordered = [...javaMirrors].sort((a, b) => latencyOf(a) - latencyOf(b));
+    list.innerHTML = ordered.map((mirror) => {
+        const probe = javaMirrorProbes.find((p) => p.url === mirror.url);
+        let latency = 'Testing';
+        let cls = 'idle';
+        let suffix = '';
+        if (probe) {
+            if (probe.latency_ms != null) {
+                latency = `${probe.latency_ms} ms`;
+                cls = probe.adoptium ? 'ok' : 'bad';
+                if (!probe.adoptium) suffix = ' · no Adoptium';
+            } else {
+                latency = 'Unavailable';
+                cls = 'bad';
+            }
+        }
+        return `
+            <li class="dl-source" data-id="${escapeHtml(mirror.id)}"
+                title="${escapeHtml(mirror.url)} (${escapeHtml(mirror.kind || 'adoptium')})">
+                <md-icon class="dl-source-icon">local_cafe</md-icon>
+                <span class="dl-source-name">${escapeHtml(mirror.name)}</span>
+                <span class="dl-source-latency ${cls}">${escapeHtml(latency + suffix)}</span>
+                <button class="dl-source-remove" data-id="${escapeHtml(mirror.id)}"
+                    aria-label="Remove mirror" title="Remove mirror">×</button>
+            </li>`;
+    }).join('');
+}
+
+async function loadJavaMirrors() {
+    const raw = await loadSvar(JAVA_CFG.mirrors, null);
+    if (Array.isArray(raw) && raw.length) {
+        // isoinfo 源已废弃：加载时直接丢弃（避免列表里出现永远不可用的条目）
+        javaMirrors = raw
+            .filter((m) => m && m.url && (m.kind || 'adoptium') !== 'isoinfo')
+            .map((m) => ({
+                id: m.id || `mirror-${Math.random().toString(36).slice(2, 8)}`,
+                name: m.name || String(m.url).replace(/^https?:\/\//, '').split('/')[0],
+                url: m.url,
+                kind: m.kind || 'adoptium',
+            }));
+        // 有废弃条目被丢弃 → 立刻写回，避免下次再出现
+        if (javaMirrors.length !== raw.length) {
+            await saveSvar(JAVA_CFG.mirrors, javaMirrors);
+        }
+    } else {
+        javaMirrors = await invokeFn('default_java_mirrors_cmd').catch(() => []);
+    }
+    renderJavaMirrors();
+}
+
+async function saveJavaMirrors() {
+    await saveSvar(JAVA_CFG.mirrors, javaMirrors);
+    await syncJavaInstallerConfig();
+}
+
+/** 并发测速所有 Java 镜像（只展示，不竞速）。 */
+async function testJavaMirrors() {
+    if (!javaMirrors.length) return;
+    javaMirrorProbes = [];
+    renderJavaMirrors();
+    try {
+        const res = await invokeFn('probe_java_mirrors', {
+            mirrors: javaMirrors.map((m) => ({ url: m.url, kind: m.kind || 'adoptium' })),
+        });
+        javaMirrorProbes = Array.isArray(res) ? res : [];
+    } catch (error) {
+        console.error('probe java mirrors failed:', error);
+    }
+    renderJavaMirrors();
+}
+
+async function syncJavaInstallerConfig() {
+    const auto = (await loadSvar(JAVA_CFG.auto, true)) !== false;
+    const preferJdk = (await loadSvar(JAVA_CFG.prefer, 'jre')) === 'jdk';
+    const mirrors = javaMirrors.map((m) => ({ url: m.url, kind: m.kind || 'adoptium' }));
+    try {
+        await invokeFn('configure_java_installer', {
+            auto,
+            preferJdk,
+            mirrors,
+        });
+    } catch (error) {
+        console.error('configure_java_installer failed:', error);
+    }
+    if ($el('java-auto-install')) $el('java-auto-install').selected = auto;
+    if ($el('java-prefer')) $el('java-prefer').value = preferJdk ? 'jdk' : 'jre';
+}
+
+function javaInstallStatus(text, isError = false) {
+    const el = $el('java-install-status');
+    if (!el) return;
+    el.textContent = text;
+    el.hidden = !text;
+    el.classList.toggle('java-status--error', isError);
+}
+
+/** 一键给所有已安装版本补齐 Java（缺失的大版本逐个下载）。 */
+async function installMissingJava() {
+    const button = $el('java-install-all');
+    const bar = $el('java-install-bar');
+    try {
+        if (button) button.disabled = true;
+        const list = await invokeFn('list_java_requirements').catch(() => []);
+        const missing = [...new Set(
+            (Array.isArray(list) ? list : [])
+                .filter((v) => v && !v.satisfied)
+                .map((v) => v.major),
+        )].sort((a, b) => a - b);
+        if (!missing.length) {
+            javaInstallStatus('Every installed version already has a matching Java.');
+            return;
+        }
+        if (bar) {
+            bar.hidden = false;
+            bar.value = 0;
+        }
+        for (let i = 0; i < missing.length; i += 1) {
+            javaInstallStatus(`Installing Java ${missing[i]}… (${i + 1}/${missing.length})`);
+            await invokeFn('install_java_runtime', { major: missing[i] });
+            if (bar) bar.value = (i + 1) / missing.length;
+        }
+        javaInstallStatus(`Done: installed Java ${missing.join(', ')}.`);
+        await renderJavaList();
+    } catch (error) {
+        console.error('install java failed:', error);
+        javaInstallStatus(`Failed: ${error}`, true);
+    } finally {
+        if (button) button.disabled = false;
+        if (bar) bar.hidden = true;
+    }
+}
+
+async function initJavaInstallerSettings() {
+    await loadJavaMirrors();
+    await syncJavaInstallerConfig();
+    $el('java-auto-install')?.addEventListener('change', async (e) => {
+        await saveSvar(JAVA_CFG.auto, e.target.selected);
+        await syncJavaInstallerConfig();
+    });
+    $el('java-prefer')?.addEventListener('change', async (e) => {
+        await saveSvar(JAVA_CFG.prefer, e.target.value);
+        await syncJavaInstallerConfig();
+    });
+    // Java 镜像列表（与下载源/更新源同款）
+    $el('java-mirror-refresh')?.addEventListener('click', () => {
+        void testJavaMirrors();
+    });
+    $el('java-mirror-list')?.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.dl-source-remove');
+        if (!btn) return;
+        javaMirrors = javaMirrors.filter((m) => m.id !== btn.dataset.id);
+        renderJavaMirrors();
+        await saveJavaMirrors();
+    });
+    $el('java-mirror-add')?.addEventListener('click', () => {
+        $el('java-mirror-name').value = '';
+        $el('java-mirror-url').value = '';
+        if ($el('java-mirror-kind')) $el('java-mirror-kind').value = 'adoptium';
+        void $el('java-mirror-dialog').show();
+    });
+    $el('java-mirror-cancel')?.addEventListener('click', () => {
+        void $el('java-mirror-dialog').close();
+    });
+    $el('java-mirror-save')?.addEventListener('click', async () => {
+        const name = $el('java-mirror-name').value.trim();
+        const url = $el('java-mirror-url').value.trim();
+        const kind = ($el('java-mirror-kind')?.value || 'adoptium').trim();
+        if (!name || !/^https?:\/\//i.test(url)) {
+            if ($el('java-config-status')) {
+                $el('java-config-status').hidden = false;
+                $el('java-config-status').textContent = 'Enter a name and an http(s) URL';
+            }
+            return;
+        }
+        javaMirrors = [...javaMirrors, { id: `custom-${Date.now()}`, name, url, kind }];
+        renderJavaMirrors();
+        await saveJavaMirrors();
+        void $el('java-mirror-dialog').close();
+        void testJavaMirrors();
+    });
+    $el('java-install-all')?.addEventListener('click', () => {
+        void installMissingJava();
+    });
+    // 下载/解压 Java 的实时进度
+    void onPageEvent('java-install-progress', (payload) => {
+        const bar = $el('java-install-bar');
+        const { phase, done, total, label } = payload || {};
+        if (bar && total > 0) {
+            bar.hidden = false;
+            bar.value = Math.min(1, done / total);
+        }
+        if (label && phase !== 'done') javaInstallStatus(String(label));
+    });
+    // 首次进入自动测一遍，方便用户挑最快的镜像
+    void testJavaMirrors();
+}
+
 async function initSettingsPage() {
     // Default to the first (only) view: "about".
     const first = VIEWS.length > 0 ? VIEWS[0].key : 'about';
@@ -654,6 +874,8 @@ async function initSettingsPage() {
     // 下载源面板（Settings → Download）：加载配置并测一次速选出最快源
     bindSourcePanel();
     await loadSourceSettings();
+    // Java 自动安装配置 + 「一键安装」按钮
+    await initJavaInstallerSettings();
     void testSources();
 }
 

@@ -28,3 +28,4 @@ dist-ssr
 acl-recovery
 .tool-versions
 *.py
+*.psd

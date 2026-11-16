@@ -418,6 +418,26 @@ async fn ensure_vanilla_base(app: &AppHandle, game_version: &str) -> Result<Valu
     };
     check_cancel()?;
 
+    // 1.5) 按版本 JSON 的 javaVersion 自动补齐运行时（官方 + 镜像）；
+    //      失败不阻断安装（本机可能已有可用 Java），只记日志。
+    if crate::java_installer::auto_enabled() {
+        if let Some(major) = json["javaVersion"]["majorVersion"].as_u64() {
+            if crate::java_installer::best_for_major(major as u32).is_none() {
+                emit_install(
+                    app,
+                    game_version,
+                    "java",
+                    0,
+                    1,
+                    &format!("Installing Java {major}…"),
+                );
+                if let Err(e) = crate::java_installer::ensure_for_major(app, major as u32).await {
+                    eprintln!("[java] auto-install failed: {e}");
+                }
+            }
+        }
+    }
+
     // 2) 客户端 jar（约 25MB，字节级进度）
     let jar_path = vdir.join(format!("{game_version}.jar"));
     let client_url = json["downloads"]["client"]["url"].as_str()
@@ -654,7 +674,7 @@ async fn install_installer_based(
     let vdir = versions_dir.join(version_id);
 
     // 1) 原版基底（inheritsFrom 依赖它；资源文件也在这里补齐）
-    ensure_vanilla_base(app, game_version).await?;
+    let base_json = ensure_vanilla_base(app, game_version).await?;
     check_cancel()?;
 
     // 2) 已装过 → 直接返回（只补基底资源）
@@ -668,8 +688,11 @@ async fn install_installer_based(
         });
     }
 
-    // 3) Java（官方安装器必须）
-    let java = find_java(java_path)?;
+    // 3) Java（官方安装器必须）：优先用自动装好的、满足该版本要求的运行时
+    let auto_java = base_json["javaVersion"]["majorVersion"]
+        .as_u64()
+        .and_then(|m| crate::java_installer::best_for_major(m as u32));
+    let java = find_java(java_path.or(auto_java.as_deref().and_then(|p| p.to_str())))?;
 
     // 4) 下载官方安装器
     let installer = std::env::temp_dir().join(format!("gsml-{version_id}-installer.jar"));

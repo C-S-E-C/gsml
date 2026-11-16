@@ -96,6 +96,46 @@
             </md-text-button>
           </div>
           <p class="setting-note" id="dl-sources-note"></p>
+
+          <div class="setting-divider"></div>
+          <div class="setting-section-label">Java Runtime</div>
+          <p class="setting-note">
+            A matching Java is downloaded automatically when installing a version
+            (Adoptium official API first, then mainland mirrors).
+          </p>
+          <div class="setting-line">
+            <label for="java-auto-install">Auto-install Java</label>
+            <md-switch id="java-auto-install" selected></md-switch>
+          </div>
+          <div class="setting-line">
+            <label for="java-prefer">Prefer</label>
+            <md-filled-select id="java-prefer">
+              <md-select-option value="jre" selected>JRE</md-select-option>
+              <md-select-option value="jdk">JDK</md-select-option>
+            </md-filled-select>
+          </div>
+          <p class="setting-note">
+            Java is installed to <code>.minecraft\runtime\&lt;major&gt;-&lt;jre|jdk&gt;</code>
+            (e.g. <code>.minecraft\runtime\17-jre</code>), so other launchers such as PCL
+            can find it automatically. This path is fixed and needs no setting.
+          </p>
+          <p class="setting-note">
+            Java mirrors (Adoptium package directories). On install the official API and
+            all mirrors are resolved in parallel; the fastest one that answers wins.
+            The list below is shown fastest-first after a test.
+          </p>
+          <ul class="dl-source-list" id="java-mirror-list"></ul>
+          <div class="dl-source-controls">
+            <span class="dl-source-spacer"></span>
+            <md-text-button id="java-mirror-refresh">
+              <md-icon slot="icon">refresh</md-icon>Test all
+            </md-text-button>
+            <md-text-button id="java-mirror-add">
+              <md-icon slot="icon">add</md-icon>Add mirror
+            </md-text-button>
+          </div>
+          <p class="setting-note" id="java-config-status" hidden></p>
+
           <div class="setting-divider"></div>
 
           <div class="setting-line">
@@ -126,6 +166,16 @@
           </div>
           <p class="setting-note" id="java-status" hidden></p>
           <div class="setting-divider"></div>
+          <div class="setting-section-label">Install Java for all versions</div>
+          <p class="setting-note">
+            Scans installed versions and downloads any missing Java major (8 / 17 / 21 …).
+          </p>
+          <div class="java-actions">
+            <md-filled-button id="java-install-all">Install missing Java</md-filled-button>
+          </div>
+          <md-linear-progress id="java-install-bar" hidden></md-linear-progress>
+          <p class="setting-note" id="java-install-status" hidden></p>
+          <div class="setting-divider"></div>
           <div class="setting-section-label">Detected Java Installations</div>
           <md-list id="java-list" class="java-list"></md-list>
           <p class="setting-note">Installations are detected from common locations automatically. Click “Use” to make one the default for launching and installing.</p>
@@ -142,6 +192,34 @@
       <div slot="actions">
         <md-text-button form="update-confirm-form" value="later">Not Now</md-text-button>
         <md-filled-button form="update-confirm-form" value="update">Update Now</md-filled-button>
+      </div>
+    </md-dialog>
+
+    <!-- ── Add Java mirror（Adoptium 目录 / API）── -->
+    <md-dialog type="modal" id="java-mirror-dialog">
+      <div slot="headline">Add Java mirror</div>
+      <div slot="content">
+        <md-outlined-text-field id="java-mirror-name" label="Name"
+          placeholder="e.g. TUNA" style="width:100%;"></md-outlined-text-field>
+        <md-outlined-text-field id="java-mirror-url" label="Mirror URL"
+          placeholder="https://mirrors.tuna.tsinghua.edu.cn/Adoptium"
+          style="width:100%;margin-top:12px;"></md-outlined-text-field>
+        <div class="setting-line">
+          <label for="java-mirror-kind">Type</label>
+          <md-filled-select id="java-mirror-kind">
+            <md-select-option value="adoptium" selected>Adoptium dir</md-select-option>
+            <md-select-option value="api">Adoptium API</md-select-option>
+          </md-filled-select>
+        </div>
+        <p class="setting-note">
+          Adoptium dir：Adoptium 发行包目录根（如 TUNA 的 /Adoptium/，会解析
+          {major}/{jre|jdk}/{arch}/{os}/ 下的 zip）；Adoptium API：v3 API 根，
+          如 https://api.adoptium.net。
+        </p>
+      </div>
+      <div slot="actions">
+        <md-filled-tonal-button id="java-mirror-cancel">Cancel</md-filled-tonal-button>
+        <md-filled-button id="java-mirror-save">Add</md-filled-button>
       </div>
     </md-dialog>
 

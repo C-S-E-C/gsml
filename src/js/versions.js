@@ -557,6 +557,18 @@ function bindEvents() {
 
     // 安装进度（全局事件，无论在哪个视图都同步到详情进度区）
     void onPageEvent('install-progress', (payload) => onProgress({ payload }));
+
+    // 自动安装 Java 时的下载/解压进度：只把文案接到进度 Label 上
+    // （字节进度条仍由 install-progress 控制，避免两个事件互相打架）
+    void onPageEvent('java-install-progress', (payload) => {
+        if (!installing || !payload?.label) {
+            return;
+        }
+        const label = $('dl-progress-label');
+        if (label) {
+            label.textContent = String(payload.label);
+        }
+    });
 }
 
 // ── Deeplink：install-version 转过来的安装请求 ────────────────────────
@@ -609,6 +621,27 @@ window.addEventListener('message', async (event) => {
     await handleDeeplinkInstall(action);
 });
 
+// 把设置页保存的「Java 自动安装」配置同步给后端（安装新版本时要用）
+async function syncJavaInstallerConfig() {
+    const [auto, prefer, mirrors] = await Promise.all([
+        invokeFn('get_svar', { key: 'java-auto-install' }).catch(() => null),
+        invokeFn('get_svar', { key: 'java-prefer' }).catch(() => null),
+        invokeFn('get_svar', { key: 'java-mirrors' }).catch(() => null),
+    ]);
+    // mirrors 是数组 [{id,name,url,kind}]；旧版字符串（isoinfo 已废弃）忽略
+    let mirrorEntries = [];
+    if (Array.isArray(mirrors)) {
+        mirrorEntries = mirrors
+            .map((m) => ({ url: (m && m.url) || '', kind: (m && m.kind) || 'adoptium' }))
+            .filter((m) => m.url && m.kind !== 'isoinfo');
+    }
+    await invokeFn('configure_java_installer', {
+        auto: auto !== false,
+        preferJdk: prefer === 'jdk',
+        mirrors: mirrorEntries,
+    }).catch((error) => console.error('configure_java_installer failed:', error));
+}
+
 async function initVersionsPage() {
     const loaderSelect = $('dl-loader-select');
     const lvSelect = $('dl-loader-version-select');
@@ -617,6 +650,8 @@ async function initVersionsPage() {
     lvIconImg.hidden = true;
     bindEvents();
     await loadSourceSettings();
+    // 后端在安装新版本时会读这份 Java 自动安装配置
+    await syncJavaInstallerConfig();
     await Promise.all([refreshVersions(), refreshInstalled()]);
     scheduleProbe();
     // 初始 displayText（vanilla）

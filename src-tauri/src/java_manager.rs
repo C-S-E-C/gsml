@@ -206,6 +206,10 @@ fn candidate_roots() -> Vec<(PathBuf, &'static str)> {
     if !user_home.is_empty() {
         roots.push((PathBuf::from(&user_home).join(".jdks"), "Scan"));
     }
+    // 启动器私有目录（旧位置，兼容已装好的运行时）
+    if let Ok(managed) = crate::java_installer::managed_root() {
+        roots.push((managed, "Managed"));
+    }
     roots.retain(|(p, _)| p.is_dir());
     roots
 }
@@ -361,6 +365,20 @@ fn java_version_key(v: &str) -> Vec<u64> {
     v.split(|c: char| c == '.' || c == '_' || c == '-' || c == '+')
         .map(|s| s.parse::<u64>().unwrap_or(0))
         .collect()
+}
+
+/// 版本字符串 → 主版本号（`21.0.4` → 21，`1.8.0_391` → 8）。
+pub(crate) fn version_major(version: &str) -> Option<u32> {
+    let mut nums = version
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| s.parse::<u32>().ok());
+    let first = nums.next()?;
+    if first == 1 {
+        nums.next()
+    } else {
+        Some(first)
+    }
 }
 
 fn normalize_path(p: &Path) -> String {

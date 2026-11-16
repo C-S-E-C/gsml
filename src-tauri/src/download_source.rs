@@ -94,7 +94,7 @@ pub fn default_sources() -> Vec<DownloadSource> {
         },
         DownloadSource {
             id: "minguncle".to_string(),
-            name: "Minguncle MCMirror".to_string(),
+            name: "Minguncle MCMirror 镜像".to_string(),
             manifest_url: "https://mirror.minguncle.cn/mc/game/version_manifest_v2.json"
                 .to_string(),
             ping_url: String::new(),

@@ -34,6 +34,8 @@ const RELAYED_EVENTS = [
     // 设置页的「Check for Updates」进度条：Rust 发 update-progress，
     // 漏了这条转发会让 iframe 里的进度条永远停在 0。
     'update-progress',
+    // 自动安装 Java 的进度（设置页 Java 面板 + 下载页安装流程）
+    'java-install-progress',
 ];
 
 async function setupEventRelay() {

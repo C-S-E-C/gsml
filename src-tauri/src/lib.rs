@@ -9,6 +9,7 @@ mod skin_manager;
 mod minecraft_manager;
 mod game_launcher;
 mod java_manager;
+mod java_installer;
 mod identification_code;
 mod proc_util;
 mod updater;
@@ -70,6 +71,11 @@ pub fn run() {
             game_launcher::is_game_running,
             java_manager::list_java_installations,
             java_manager::check_java_path,
+            java_installer::configure_java_installer,
+            java_installer::install_java_runtime,
+            java_installer::list_java_requirements,
+            java_installer::probe_java_mirrors,
+            java_installer::default_java_mirrors_cmd,
             identification_code::get_device_identifier,
             updater::check_update,
             updater::download_update,

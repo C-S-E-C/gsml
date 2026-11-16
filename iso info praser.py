@@ -84,3 +84,80 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# 示例isoinfo请求，distro，urls name因镜像源而异，部分镜像可能没有Adoptium
+# [
+#   ...,
+#     {
+#     "distro": "Temurin by Adoptium",
+#     "category": "app",
+#     "urls": [
+#       {
+#         "name": "25 (linux-x64-JDK, tar.gz)",
+#         "url": "/adoptium/25/jdk/x64/linux/OpenJDK25U-jdk_x64_linux_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (linux-aarch64-JDK, tar.gz)",
+#         "url": "/adoptium/25/jdk/aarch64/linux/OpenJDK25U-jdk_aarch64_linux_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (linux-aarch64-JRE, tar.gz)",
+#         "url": "/adoptium/25/jre/aarch64/linux/OpenJDK25U-jre_aarch64_linux_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (linux-x64-JRE, tar.gz)",
+#         "url": "/adoptium/25/jre/x64/linux/OpenJDK25U-jre_x64_linux_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (windows-x64-JDK, zip)",
+#         "url": "/adoptium/25/jdk/x64/windows/OpenJDK25U-jdk_x64_windows_hotspot_25.0.5_8.zip"
+#       },
+#       {
+#         "name": "25 (windows-x64-JRE, zip)",
+#         "url": "/adoptium/25/jre/x64/windows/OpenJDK25U-jre_x64_windows_hotspot_25.0.5_8.zip"
+#       },
+#       {
+#         "name": "25 (windows-x64-JDK, msi)",
+#         "url": "/adoptium/25/jdk/x64/windows/OpenJDK25U-jdk_x64_windows_hotspot_25.0.5_8.msi"
+#       },
+#       {
+#         "name": "25 (windows-x64-JRE, msi)",
+#         "url": "/adoptium/25/jre/x64/windows/OpenJDK25U-jre_x64_windows_hotspot_25.0.5_8.msi"
+#       },
+#       {
+#         "name": "25 (mac-x64-JDK, tar.gz)",
+#         "url": "/adoptium/25/jdk/x64/mac/OpenJDK25U-jdk_x64_mac_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (mac-aarch64-JDK, tar.gz)",
+#         "url": "/adoptium/25/jdk/aarch64/mac/OpenJDK25U-jdk_aarch64_mac_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (mac-aarch64-JRE, tar.gz)",
+#         "url": "/adoptium/25/jre/aarch64/mac/OpenJDK25U-jre_aarch64_mac_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (mac-x64-JRE, tar.gz)",
+#         "url": "/adoptium/25/jre/x64/mac/OpenJDK25U-jre_x64_mac_hotspot_25.0.5_8.tar.gz"
+#       },
+#       {
+#         "name": "25 (mac-x64-JDK, pkg)",
+#         "url": "/adoptium/25/jdk/x64/mac/OpenJDK25U-jdk_x64_mac_hotspot_25.0.5_8.pkg"
+#       },
+#       {
+#         "name": "25 (mac-aarch64-JDK, pkg)",
+#         "url": "/adoptium/25/jdk/aarch64/mac/OpenJDK25U-jdk_aarch64_mac_hotspot_25.0.5_8.pkg"
+#       },
+#       {
+#         "name": "25 (mac-aarch64-JRE, pkg)",
+#         "url": "/adoptium/25/jre/aarch64/mac/OpenJDK25U-jre_aarch64_mac_hotspot_25.0.5_8.pkg"
+#       },
+#       {
+#         "name": "25 (mac-x64-JRE, pkg)",
+#         "url": "/adoptium/25/jre/x64/mac/OpenJDK25U-jre_x64_mac_hotspot_25.0.5_8.pkg"
+#       },
+#       ...
+#     ]
+#   }
+# ]
